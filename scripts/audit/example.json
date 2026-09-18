@@ -1,0 +1,11 @@
+{
+  "consent": "Not selected; initial page load only",
+  "steps": [
+    {
+      "name": "Landing page",
+      "action": "goto",
+      "waitMs": 5000,
+      "expect": [{ "platform": "GA4", "event": "page_view" }]
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pixel Inspector by PixelMonitor</title>
+  <link rel="stylesheet" href="panel.css">
+  <style>
+    .unified-payload{padding:0;overflow:hidden;background:#fff}
+    .unified-payload h4{padding:12px 14px 0;margin:0}
+    .payload-legend{display:flex;align-items:center;gap:13px;flex-wrap:wrap;color:#667085;font-size:9px;margin:7px 14px 11px}
+    .payload-legend span{display:inline-flex;align-items:center;gap:5px}
+    .field-indicator{display:inline-block;width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:#cbd5e1}
+    .payload-row.field-required .field-indicator{background:#2563eb}
+    .payload-row.field-custom .field-indicator{background:#7c3aed}
+    .payload-row.field-missing .field-indicator{background:#dc2626}
+    .unified-payload dl{margin:0;border-top:1px solid #e9edf3}
+    .unified-payload dl>div{display:grid;grid-template-columns:minmax(125px,.55fr) minmax(0,1.45fr);gap:16px;padding:9px 13px;border:0;border-bottom:1px solid #edf0f4;align-items:start}
+    .unified-payload dl>div:last-child{border-bottom:0}
+    .unified-payload dl>div:nth-child(even){background:#fafbfd}
+    .unified-payload dt{display:flex;align-items:center;gap:7px;min-width:0;color:#475467;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;font-weight:650}
+    .unified-payload dd{min-width:0;margin:0;color:#111827;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;overflow-wrap:anywhere}
+    .unified-payload dd small{margin-top:4px;color:#7c8799;font-family:Inter,ui-sans-serif,sans-serif;font-size:9px;line-height:1.35}
+    .payload-row.field-missing{background:#fff7f7!important}
+    .action-event-list{border-left:0;padding-left:0}
+    .destination-events{border-left:0;padding-left:0}
+    .action-vendor-group>div{padding:0 9px}
+    .footer-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px}
+    .footer-links{display:flex;align-items:center;gap:7px}
+    .feedback-link{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;border:1px solid #cbd5e1;border-radius:7px;padding:6px 9px;background:#fff;color:#344054;font-size:9px;font-weight:700;text-decoration:none;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .feedback-link:hover{border-color:#93b4fa;background:#f8fafc;color:#1d4ed8}
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+    <div class="brand-copy"><h1>Pixel Inspector</h1><p>by PixelMonitor</p></div>
+    <span id="status" class="status-pill">Waiting</span>
+  </header>
+  <main>
+    <div id="error" class="message error-message" role="alert"></div>
+    <section class="card capture-card">
+      <p class="eyebrow">Current tab</p>
+      <h2 id="captureTitle">Open a website to inspect</h2>
+      <p id="intro">Opening the panel or switching website tabs automatically records the selected tab’s page addresses, clicks, element labels, form submissions, and marketing request payloads. Payloads may contain personal identifiers and purchase details. Data stays in this browser; PixelMonitor receives no captured data.</p>
+      <div id="site" class="site-address"></div>
+      <div class="actions capture-actions">
+        <button id="stop" hidden>Pause</button>
+        <button id="clear" class="secondary quiet" hidden>Clear</button>
+      </div>
+      <p id="notice" class="message notice-message" role="status"></p>
+      <div id="controls" class="capture-context" hidden>
+        <div><strong>Actions are captured automatically</strong><p>Pages, clicks, and form submissions are recorded in this tab, including after navigation or closing the panel. Pause stops capture; Clear resets the results and keeps recording.</p></div>
+      </div>
+    </section>
+    <div id="results" hidden>
+      <section class="card snapshot-card">
+        <div class="section-heading"><div><p class="eyebrow">Current session</p><h2>Session summary</h2></div><span id="snapshotState" class="learning-label"></span></div>
+        <div class="metric-grid">
+          <div><strong id="actionMetric">0</strong><span>Actions</span></div>
+          <div><strong id="vendorMetric">0</strong><span>Vendors</span></div>
+          <div><strong id="destinationMetric">0</strong><span>Pixel IDs</span></div>
+          <div><strong id="eventMetric">0</strong><span>Events</span></div>
+        </div>
+      </section>
+      <section class="card evidence-card">
+        <div class="section-heading"><div><p class="eyebrow">What happened</p><h2>Visitor journey and pixels</h2></div><div class="count-group"><span id="actionCount" class="count-badge"></span><span id="count" class="count-badge"></span></div></div>
+        <p class="section-intro">Each visitor action is paired with the marketing requests observed afterward. Open an event to see its payload, with required, custom, and other fields marked.</p>
+        <div class="filter-row">
+          <select id="filter" aria-label="Filter vendor"><option value="">All vendors</option></select>
+          <div class="search-control">
+            <input id="search" type="search" placeholder="Search actions, pixels, or fields" aria-label="Search visitor journey and pixels">
+            <button id="clearSearch" type="button" aria-label="Clear search" title="Clear search" hidden>×</button>
+          </div>
+        </div>
+        <div class="journey-controls"><button id="expandAll" class="secondary" type="button">Expand all</button><button id="collapseAll" class="secondary" type="button">Collapse all</button></div>
+        <ol id="journey" aria-live="polite"></ol>
+      </section>
+      <section class="card export-card">
+        <p class="eyebrow">Session tools</p>
+        <h2>Use this session</h2>
+        <p>Pause, then download captured data. Files may contain personal or sensitive information; review them before sharing.</p>
+        <div class="export-grid">
+          <button id="html"><span>Pixel report</span><small>Shareable HTML</small></button>
+          <button id="json" class="secondary"><span>Session data</span><small>Structured JSON</small></button>
+          <button id="summary" class="secondary"><span>Session summary</span><small>Download plain text</small></button>
+        </div>
+      </section>
+    </div>
+    <footer>
+      <div class="footer-heading"><strong>Private browser session</strong><div class="footer-links"><a class="feedback-link" href="mailto:mayur@pixelmonitor.app?subject=Pixel%20Inspector%20feedback">Send feedback</a><a class="feedback-link" href="privacy.html" target="_blank" rel="noreferrer">Privacy</a></div></div>
+      Data stays in this browser session until you clear it or close the tab. Server-side events and vendor attribution are outside this browser inspection.
+    </footer>
+  </main>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>
