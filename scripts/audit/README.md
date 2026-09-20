@@ -1,10 +1,13 @@
 # Website journey audits
 
-Local tool for inspecting website journeys and recording advertising and analytics request evidence. Reports are saved locally. Supports recognized Meta browser events, GA4 collect requests (including form-encoded batches), and Google Ads conversion requests. Does not audit server-side tracking or every tracking vendor.
+Local tool for inspecting website journeys and recording advertising and analytics request evidence. Reports are saved locally. Uses the same request parsers as the extension; see the [supported vendors](../../extension/README.md#what-pixelmonitor-recognizes). Does not audit server-side tracking or every tracking vendor.
 
 ## Run
 
+This is an optional developer tool, separate from the Chrome extension. Install Node.js 20 or later and pnpm, then run these commands from the repository root:
+
 ```sh
+pnpm install --frozen-lockfile
 pnpm exec playwright install chromium
 node scripts/audit/run.mjs https://example.com
 ```
@@ -20,7 +23,7 @@ Outputs in `audit-output/<host>-<timestamp>/`:
 - `step-N.png`: viewport screenshots; review for private information before sharing.
 - `summary.txt`: plain-text summary of the journey and observed events.
 
-Raw request bodies, cookies, and full page URLs are not saved. Event names, pixel IDs, value/currency fields, and endpoint paths are retained; inspect artifacts before sharing. A request with an HTTP success does not establish receipt in the ad platform.
+Decoded request payload fields are retained and may contain full page URLs, personal identifiers, customer information, or purchase details. Screenshots may also contain private information. Reports are not automatically redacted; review them before sharing and keep generated output out of version control. A request with an HTTP success does not establish receipt in the ad platform.
 
 ## Repeatable automatic journeys
 

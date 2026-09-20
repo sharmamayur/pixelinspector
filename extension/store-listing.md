@@ -1,5 +1,7 @@
 # Chrome Web Store submission copy
 
+Maintainer reference for the official store listing. Users installing from source should follow the [project README](../README.md); contributors should follow [CONTRIBUTING.md](../CONTRIBUTING.md).
+
 ## Product details
 
 **Name:** Pixel Inspector by PixelMonitor

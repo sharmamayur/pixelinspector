@@ -3,6 +3,7 @@ node_modules/
 dist/
 playwright-report/
 test-results/
+audit-output/
 
 # Local environment files
 .env

@@ -1,8 +1,10 @@
 # Pixel Inspector by PixelMonitor
 
-A Chrome extension for marketers to see which advertising and analytics pixels fire, what data they send, and which visitor action triggered them. Requires Chrome 116 or later. No build step, account, server, or terminal is needed.
+A Chrome extension for marketers to see which advertising and analytics pixels fire, what data they send, and which visitor action preceded them. Requires Chrome 116 or later. No build step, account, server, or terminal is needed.
 
 ## Install locally
+
+First [download or clone the repository](../README.md#install-from-source). You do not need Node.js or pnpm to load this extension.
 
 1. Open `chrome://extensions` in Chrome.
 2. Enable **Developer mode**.
@@ -37,14 +39,21 @@ Automatic capture records clicks, product URL patterns (`/product/`, `/products/
 - HTTP(S) host access is required to observe third-party pixel requests from the selected site. Only recognized events belonging to the inspected tab are saved.
 - Browser requests do not prove platform receipt, attribution, or server-side tracking. A short session can also miss delayed events.
 
-The parser and report generator are shared with the repository's audit tools through `extension/lib/analyze.mjs`.
+## Export a session
 
-## Verification
+Click **Pause**, then choose **Pixel report** (HTML), **Session data** (JSON), or **Session summary** (plain text). Exports download to your computer; they do not send messages or upload data. Click **Resume** to continue recording.
 
-Run `pnpm test` for the parser and analyzer tests. Run `pnpm test:browser` for the extension browser test using Playwright Chromium (`pnpm exec playwright install chromium`).
+## Update a source installation
 
-Chrome API references: [webRequest](https://developer.chrome.com/docs/extensions/reference/api/webRequest) and [sidePanel](https://developer.chrome.com/docs/extensions/reference/api/sidePanel).
+For a cloned repository, run `git pull --ff-only` from its folder when your checkout has no local changes. For a ZIP download, download and extract the updated source. Reload the extension at `chrome://extensions`; if the folder changed, load the new `extension` folder. Refresh the website afterward. Reloading the extension clears captured sessions.
 
-Feedback: [mayur@pixelmonitor.app](mailto:mayur@pixelmonitor.app?subject=Pixel%20Inspector%20feedback)
+## Troubleshooting
 
-Store submission copy and dashboard disclosures are in [`store-listing.md`](store-listing.md). Store-ready graphic assets are in [`store-assets`](store-assets). Run `pnpm package:extension` from the repository root to create the upload ZIP.
+- **No events appear:** open the panel before refreshing the website. Confirm recording is active, and check consent choices, ad blockers, and Chrome's site-access settings. Only supported request formats appear; script downloads alone do not count.
+- **The panel does not inspect a page:** use an ordinary HTTP(S) website. Chrome restricts extensions on browser-internal pages and other protected pages.
+- **Changes to the source do not appear:** reload the extension, then refresh the inspected tab.
+- **Recording stops at 1,000 events:** export the paused session if needed, then use **Clear** to start a new one.
+
+For bugs or feature requests, use [GitHub Issues](https://github.com/sharmamayur/pixelinspector/issues). Remove personal data from screenshots and reports before posting them. Send sensitive reports to [mayur@pixelmonitor.app](mailto:mayur@pixelmonitor.app).
+
+For development and tests, see [CONTRIBUTING.md](../CONTRIBUTING.md). For packaging instructions, see the [project README](../README.md#package-from-source).
