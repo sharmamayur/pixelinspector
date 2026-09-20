@@ -1,3 +1,4 @@
+import { bestPracticeFindings } from '../../extension/lib/vendor-rules.mjs';
 import { chromium } from 'playwright';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -80,6 +81,7 @@ try {
   terminal?.close();
   await browser.close();
   report.findings = analyze(report.steps, report.events);
+  report.bestPractices = bestPracticeFindings(report.events);
   await writeFile(resolve(out, 'report.json'), JSON.stringify(report, null, 2));
   await writeFile(resolve(out, 'report.html'), reportHtml(report));
   await writeFile(resolve(out, 'summary.txt'), sessionSummary(report));

@@ -27,6 +27,7 @@ Use Pixel Inspector to:
 - Identify supported advertising and analytics requests generated during the journey.
 - Connect each request to the visitor action that happened before it.
 - Inspect vendor-required fields, website-specific custom fields, and other request fields in one readable view.
+- Review Meta and GA4 payload issues and recommendations, with suggested fixes and vendor references. Checks cover recognized request fields, not complete implementation correctness.
 - Search by action, vendor, event, destination ID, field name, or field value.
 - Keep a separate inspection session for each browser tab.
 - Export an HTML pixel report or structured JSON file.

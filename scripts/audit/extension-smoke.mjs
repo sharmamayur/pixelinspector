@@ -111,7 +111,11 @@ try {
   await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].events.length === 2, tabId);
   await website.evaluate(() => { const image = new Image(); image.src='https://www.facebook.com/tr/?id=123&ev=Purchase&cd[value]=oops&cd[currency]=usd'; });
   await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].events.length === 3, tabId);
-  assert.equal(await panel.locator('#issueSummary').count(), 0);
+  await panel.waitForFunction(() => document.querySelector('#checkSummary')?.textContent.includes('2 payload issues'));
+  const purchaseCard = panel.locator('[data-event-id="E3"]');
+  assert.match(await purchaseCard.locator('.check-badge').textContent(), /2 checks flagged/);
+  assert.match(await purchaseCard.locator('.event-checks').textContent(), /finite numeric amount/);
+  assert.equal(await purchaseCard.locator('.event-checks a').first().getAttribute('href'), 'https://developers.facebook.com/docs/meta-pixel/reference/');
   assert.equal(await panel.locator('.event.error, .event.warning').count(), 0);
   assert.equal(await firstDetails.evaluate(node => node.open), true);
   await firstDetails.locator(':scope > summary').click();
@@ -178,8 +182,18 @@ try {
   assert.ok(Array.isArray(exportedAudit.actions));
   assert.equal(exportedAudit.steps, undefined);
   assert.equal(exportedAudit.findings, undefined);
+  assert.equal(exportedAudit.bestPractices.length, 2);
+  assert.ok(exportedAudit.bestPractices.every(f => f.eventId === 'E3'));
+  const htmlDownloadPromise = panel.waitForEvent('download');
+  await panel.locator('#html').click();
+  const htmlDownload = await htmlDownloadPromise;
+  assert.match(await readFile(await htmlDownload.path(), 'utf8'), /Vendor best-practice checks/);
+  const summaryDownloadPromise = panel.waitForEvent('download');
+  await panel.locator('#summary').click();
+  const summaryDownload = await summaryDownloadPromise;
+  assert.match(await readFile(await summaryDownload.path(), 'utf8'), /Payload issue · E3/);
   await panel.evaluate(() => {
-    const event = document.querySelector('[data-event-id="E1"]');
+    const event = document.querySelector('[data-event-id="E3"]');
     for (let parent = event?.parentElement; parent; parent = parent.parentElement) if (parent instanceof HTMLDetailsElement) parent.open = true;
     const payload = event?.querySelector(':scope > details');
     if (payload) payload.open = true;

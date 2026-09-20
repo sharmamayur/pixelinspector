@@ -25,7 +25,7 @@ Keep the source folder on your computer: Chrome loads the extension from that lo
 
 1. Open a website you own or are authorized to inspect, then click the extension's toolbar icon.
 2. Inspection starts automatically. Refresh the website to capture requests made during page load.
-3. Browse the site and expand events to inspect their payloads. Search or filter by vendor to narrow the results.
+3. Browse the site and expand events to inspect their payloads and Meta/GA4 best-practice findings. Each finding includes a suggested fix and vendor documentation. Search or filter by vendor to narrow the results.
 4. Use **Pause** to stop capture and enable HTML, JSON, or plain-text exports. **Resume** continues recording. **Clear** removes the results and immediately starts a new recording.
 
 While the panel is open, switching website tabs starts separate inspection sessions. Closing the panel does not stop an existing recording; use **Pause**. Closing a website tab deletes its session.

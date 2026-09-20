@@ -1,3 +1,4 @@
+import { bestPracticeFindings } from '../../extension/lib/vendor-rules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeEvents, analyze, reportHtml } from './analyze.mjs';
@@ -65,12 +66,15 @@ test('live validation flags observed malformed payload immediately but defers mi
   assert.ok(!codes(findings).includes('event.not_observed'));
   assert.ok(codes(analyze([{...steps[0],endedAt:'now'}],events,{live:true})).includes('event.not_observed'));
 });
-test('reports present observed evidence without rule-based findings', () => {
+test('reports include request-level vendor checks with evidence and references', () => {
   const findings=inspect('https://www.facebook.com/tr/?id=123&ev=Purchase');
   const events=decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase');
   const html=reportHtml({site:'test',startedAt:'2026-01-01',browser:'test',consent:'test',steps:[],events,findings});
   assert.match(html,/Observed browser requests/);
-  assert.doesNotMatch(html,/Setup errors and warnings|Vendor reference|order value/);
+  assert.match(html,/Vendor best-practice checks/);
+  assert.match(html,/Vendor documentation/);
+  assert.match(html,/order value/);
+  assert.match(html,/developers.facebook.com/);
 });
 
 test('Google Ads destination ID comes from path, never an unrelated G- tid', () => {
@@ -135,4 +139,37 @@ test('Google Ads recognizes modern collect and user-list endpoints', () => {
   const [audience] = decodeEvents('https://www.google.com/pagead/1p-user-list/123456/?random=PRIVATE');
   assert.deepEqual([audience.platform, audience.event, audience.pixelId], ['Google Ads', 'remarketing', '123456']);
   assert.equal(audience.payloadFields.find(field => field.name === 'random').value, 'PRIVATE');
+});
+
+test('best-practice checks use request evidence independently of actions and HTTP status', () => {
+  const [event] = decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase');
+  const checks = bestPracticeFindings([{...event,id:'E1',actionId:'uncertain'}]);
+  assert.equal(checks[0].category, 'Payload issue');
+  assert.equal(checks[0].eventId, 'E1');
+  assert.equal(checks[0].pixelId, '123');
+  for (const status of [200, 400, undefined]) {
+    assert.deepEqual(bestPracticeFindings([{...event,id:'E1',actionId:'different',status}]), checks);
+  }
+  assert.equal(bestPracticeFindings([{platform:'Pinterest',event:'checkout',pixelId:'unknown'}]).length,0);
+});
+test('GA4 recommendations are distinct from invalid payloads and include sources', () => {
+  const [event] = decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=purchase&ep.transaction_id=ORDER&pr1=idSKU');
+  const checks = bestPracticeFindings([{...event,id:'E2'}]);
+  assert.deepEqual(checks.map(f => f.code), ['ga4.purchase_value']);
+  assert.equal(checks[0].category, 'Recommendation');
+  assert.match(checks[0].source, /^https:\/\/developers.google.com/);
+});
+test('GA4 event-name length accepts 40 characters and flags 41', () => {
+  for (const length of [40,41]) {
+    const checks = bestPracticeFindings(decodeEvents(`https://www.google-analytics.com/g/collect?tid=G-ABC&en=${'a'.repeat(length)}`));
+    assert.equal(checks.some(f => f.code === 'ga4.event_length'), length === 41);
+  }
+});
+test('normal events are not flagged for unseen CAPI, deduplication, or optional purchase fields', () => {
+  const events = [
+    ...decodeEvents('https://www.facebook.com/tr/?id=123&ev=AddToCart'),
+    ...decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase&cd[value]=0&cd[currency]=USD'),
+    ...decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=page_view'),
+  ];
+  assert.deepEqual(bestPracticeFindings(events), []);
 });
