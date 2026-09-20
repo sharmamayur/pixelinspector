@@ -128,13 +128,30 @@ export function decodeMajorVendor(url, body = '') {
     })];
   }
 
-  if (host === 'tr.snapchat.com' && /^\/(p|cm)\/?$/.test(path)) {
-    return [event('Snapchat', params.get('ev') || params.get('event'), params.get('pid'), `${url.origin}${path}`, {
-      value: params.get('price') || params.get('value'), currency: params.get('currency'),
-      hasTransactionId: Boolean(params.get('transaction_id')),
-      customFields: customFields([...params].filter(([key]) => ['price','value','currency','transaction_id','item_ids','item_category','description','number_items','payment_info_available','search_string','level','success','sign_up_method'].includes(key))),
-      payloadEntries: [...params],
-    })];
+  // Snap's SDK posts { ctx, req: [{ t: { pid, ev, ... }, ... }] } to /p.
+  // req entries containing md, pc, or log are diagnostics, not pixel events.
+  if (['tr.snapchat.com', 'tr6.snapchat.com'].includes(host) && /^\/p\/?$/.test(path)) {
+    const isObject = value => value && typeof value === 'object' && !Array.isArray(value);
+    const commerceFields = ['price','value','currency','transaction_id','item_ids','item_category','description','number_items','payment_info_available','search_string','level','success','sign_up_method'];
+    const makeEvent = (fields, entries) => {
+      const name = first(fields.ev, fields.event);
+      if (typeof name !== 'string') return [];
+      return [event('Snapchat', name, fields.pid, `${url.origin}${path}`, {
+        value: first(fields.price, fields.value), currency: fields.currency,
+        hasTransactionId: Boolean(fields.transaction_id),
+        customFields: customFields(flattenFields(fields).filter(([key]) => commerceFields.includes(key) || key.startsWith('item_ids['))),
+        payloadEntries: entries,
+      })];
+    };
+    if (isObject(json) && Array.isArray(json.req)) {
+      const { req, ...context } = json;
+      return req.flatMap((entry, index) => isObject(entry?.t)
+        ? makeEvent(entry.t, [...params, ...flattenFields(context), ...flattenFields(entry, `req[${index}]`)])
+        : []);
+    }
+    if (isObject(json)) return makeEvent(json, [...params, ...flattenFields(json)]);
+    // Legacy query-string and form-encoded pixel requests.
+    return makeEvent(Object.fromEntries(params), [...params]);
   }
 
   if (host === 'bat.bing.com' && /^\/action\/\d+\/?$/.test(path)) {
