@@ -117,3 +117,36 @@ test('script loads and near-match domains are ignored', () => {
     'https://bat.bing.com/bat.js',
   ]) assert.deepEqual(decodeEvents(url), []);
 });
+
+// Based on the public Snap SDK's /p envelope; identifiers are synthetic.
+test('Snapchat JSON batches retain separate events, destinations, and shared context', () => {
+  const events = decodeEvents('https://tr.snapchat.com/p', JSON.stringify({
+    ctx: { url: 'https://example.test/cart', v: 'test' },
+    req: [
+      { t: { pid: 'snap-one', ev: 'PAGE_VIEW' }, ts: 1 },
+      { md: { pids: ['snap-one'], btx: 'button' } },
+      { t: { pid: 'snap-two', ev: 'PURCHASE', price: 0, currency: 'USD', transaction_id: 'test-order' }, ts: 2 },
+    ],
+  }));
+  assert.deepEqual(events.map(e => [e.platform,e.event,e.pixelId]), [['Snapchat','PAGE_VIEW','snap-one'],['Snapchat','PURCHASE','snap-two']]);
+  assert.equal(events[1].value, '0');
+  assert.equal(events[1].currency, 'USD');
+  assert.equal(events[1].hasTransactionId, true);
+  assert.ok(events[1].payloadFields.some(f => f.name === 'req[2].t.transaction_id' && f.value === 'test-order'));
+  assert.ok(events[0].payloadFields.some(f => f.name === 'ctx.url'));
+  assert.ok(!events[0].payloadFields.some(f => f.value === 'test-order'));
+});
+test('Snapchat supports alternate host, direct JSON, and form POSTs', () => {
+  const body = JSON.stringify({req:[{t:{pid:'snap-id',ev:'ADD_CART',price:10,currency:'USD'}}]});
+  assert.equal(one('https://tr6.snapchat.com/p',body).pixelId, 'snap-id');
+  assert.equal(one('https://tr.snapchat.com/p',JSON.stringify({pid:'snap-id',ev:'PAGE_VIEW'})).event, 'PAGE_VIEW');
+  assert.equal(one('https://tr.snapchat.com/p','pid=snap-id&ev=PURCHASE&price=5&currency=USD').value, '5');
+});
+test('Snapchat ignores diagnostics, preflights, sync, scripts, and lookalike hosts', () => {
+  for (const body of ['', '{invalid', JSON.stringify({req:[null,{log:{name:'ERR'}},{pc:{pids:['snap-id']}},{t:{pid:'snap-id'}}]})]) {
+    assert.deepEqual(decodeEvents('https://tr.snapchat.com/p',body), []);
+  }
+  for (const url of ['https://tr.snapchat.com/cm?pid=abc','https://tr.snapchat.com/cm/s?pid=abc','https://sc-static.net/scevent.min.js','https://tr.snapchat.com.evil.test/p?pid=abc&ev=PAGE_VIEW']) {
+    assert.deepEqual(decodeEvents(url), []);
+  }
+});

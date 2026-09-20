@@ -247,6 +247,45 @@ try {
   await website.locator('[contenteditable]').click();
   await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].actions.length === 2, tabId);
   assert.equal(JSON.stringify((await send('get')).audit).includes('private typed content'), false);
+  // Exercise JSON POST capture through Chrome's real webRequest pipeline.
+  await context.route('https://tr.snapchat.com/**', route => route.fulfill({status:204,body:''}));
+  await website.evaluate(async () => {
+    await fetch('https://tr.snapchat.com/p', {
+      method:'POST', mode:'no-cors',
+      body:JSON.stringify({ctx:{url:location.href},req:[
+        {t:{pid:'snap-browser-one',ev:'PAGE_VIEW'}},
+        {md:{pids:['snap-browser-one'],btx:'button'}},
+        {t:{pid:'snap-browser-two',ev:'PURCHASE',price:5,currency:'USD'}},
+      ]}),
+    });
+  });
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].events.filter(e => e.platform === 'Snapchat').length === 2, tabId);
+  const snapEvents = (await send('get')).audit.events.filter(e => e.platform === 'Snapchat');
+  assert.deepEqual(snapEvents.map(e => [e.event,e.pixelId]), [['PAGE_VIEW','snap-browser-one'],['PURCHASE','snap-browser-two']]);
+  assert.equal(snapEvents[1].value,'5');
+  assert.ok(snapEvents[1].payloadFields.some(f => f.name === 'req[2].t.currency' && f.value === 'USD'));
+  await panel.locator('#filter').selectOption('Snapchat');
+  await panel.locator('#expandAll').click();
+  assert.equal(await panel.locator('.event').count(),2);
+  assert.match(await panel.locator('#journey').innerText(), /snap-browser-two/);
+  // Scramble storage order to verify numeric E-ID ordering inside each
+  // existing vendor/pixel group, including E2 versus E10.
+  await send('stop');
+  await panel.evaluate(async tabId => {
+    const { audits } = await chrome.storage.session.get('audits');
+    const audit = audits[tabId];
+    const template = audit.events.find(e => e.platform === 'Snapchat');
+    const action = audit.actions.at(-1);
+    audit.events = [10,2,4,1,3].map(n => ({...template,id:`E${n}`,actionId:action.id,action:action.name,
+      platform:n === 3 ? 'Meta' : 'Snapchat',pixelId:n === 4 ? 'aaa' : 'zzz'}));
+    await chrome.storage.session.set({audits});
+  }, tabId);
+  await panel.locator('#filter').selectOption('');
+  await panel.waitForFunction(() => [...document.querySelectorAll('.event')].map(e => e.dataset.eventId).join(',') === 'E3,E4,E1,E2,E10');
+  await panel.locator('#expandAll').click();
+  assert.deepEqual(await panel.locator('.event').evaluateAll(nodes => nodes.map(n => n.dataset.eventId)), ['E3','E4','E1','E2','E10']);
+  await panel.locator('#filter').selectOption('Snapchat');
+  assert.deepEqual(await panel.locator('.event').evaluateAll(nodes => nodes.map(n => n.dataset.eventId)), ['E4','E1','E2','E10']);
   const privacy = await context.newPage();
   await privacy.goto(`chrome-extension://${id}/privacy.html`);
   assert.match(await privacy.locator('body').innerText(), /Limited Use/);

@@ -150,7 +150,7 @@ function groupedActionEvents(actionId, events, expandMatches = false) {
     vendorSummary.textContent = `${vendor} · ${destinations.size} pixel ID${destinations.size === 1 ? '' : 's'} · ${vendorEvents.length} event${vendorEvents.length === 1 ? '' : 's'}`;
     const vendorBody = document.createElement('div');
     for (const destination of [...destinations.keys()].sort()) {
-      const destinationEvents = destinations.get(destination);
+      const destinationEvents = [...destinations.get(destination)].sort((a, b) => Number(a.id.slice(1)) - Number(b.id.slice(1)));
       const destinationKey = `${vendorKey}\u0000${destination}`;
       const destinationGroup = document.createElement('details'); destinationGroup.className = 'action-destination-group'; destinationGroup.open = expandMatches || !closedActionDestinations.has(destinationKey);
       destinationGroup.addEventListener('toggle', () => destinationGroup.open ? closedActionDestinations.delete(destinationKey) : closedActionDestinations.add(destinationKey));
