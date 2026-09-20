@@ -19,9 +19,9 @@ A fresh browser opens. The initial page load is captured automatically. In the t
 Outputs in `audit-output/<host>-<timestamp>/`:
 
 - `report.html`: local report with event evidence and screenshot links.
-- `report.json`: machine-readable evidence and findings.
+- `report.json`: machine-readable evidence and findings, including request-level Meta/GA4 checks under `bestPractices`.
 - `step-N.png`: viewport screenshots; review for private information before sharing.
-- `summary.txt`: plain-text summary of the journey and observed events.
+- `summary.txt`: plain-text summary of the journey, observed events, and Meta/GA4 best-practice checks.
 
 Decoded request payload fields are retained and may contain full page URLs, personal identifiers, customer information, or purchase details. Screenshots may also contain private information. Reports are not automatically redacted; review them before sharing and keep generated output out of version control. A request with an HTTP success does not establish receipt in the ad platform.
 

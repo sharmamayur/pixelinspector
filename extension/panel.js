@@ -1,3 +1,5 @@
+import { bestPracticeVendors } from './lib/rule-config.mjs';
+import { bestPracticeFindings } from './lib/vendor-rules.mjs';
 import { reportHtml, sessionSummary, failureDetails } from './lib/analyze.mjs';
 const $ = id => document.getElementById(id);
 let audit = null;
@@ -115,6 +117,12 @@ function journeyEventCard(event, expandMatch = false) {
   const heading = document.createElement('div'); heading.className = 'event-heading';
   const title = document.createElement('strong'); title.textContent = `${event.platform} · ${event.event}`;
   heading.append(title);
+  const findings = bestPracticeFindings([event]);
+  if (findings.length) {
+    const badge = document.createElement('span'); badge.className = 'check-badge';
+    badge.textContent = `${findings.length} check${findings.length === 1 ? '' : 's'} flagged`;
+    heading.append(badge);
+  }
   const info = document.createElement('small'); info.textContent = `${new Date(event.at).toLocaleTimeString()} · Destination ${event.pixelId}`;
   const status = document.createElement('small'); status.className = 'event-status';
   status.textContent = `${event.id} · ${event.failed ? failureDetails(event.failureReason).label : event.status ? `HTTP ${event.status}` : 'Response unconfirmed'}`;
@@ -175,17 +183,41 @@ function journeyItem(action, index, events, filtersActive, expandMatches = false
   tracking.addEventListener('toggle', () => tracking.open ? openActions.add(actionId) : openActions.delete(actionId));
   const summary = document.createElement('summary');
   summary.textContent = events.length ? `${events.length} tracking event${events.length === 1 ? '' : 's'} after this action` : filtersActive && !actionMatched ? 'No matching tracking events for this filter' : 'No recognized tracking events after this action';
+  const flagged = bestPracticeFindings(events).length;
+  if (flagged) summary.textContent += ` · ${flagged} checks flagged`;
   tracking.append(summary);
   if (events.length) tracking.append(groupedActionEvents(actionId, events, expandMatches));
   item.append(name, description, time, tracking);
   return item;
+}
+function eventChecks(event) {
+  if (!bestPracticeVendors.includes(event.platform)) return document.createDocumentFragment();
+  const section = document.createElement('section'); section.className = 'event-checks';
+  const heading = document.createElement('h4'); heading.textContent = 'Vendor best-practice checks';
+  section.append(heading);
+  const findings = bestPracticeFindings([event]);
+  if (!findings.length) {
+    const note = document.createElement('p');
+    note.textContent = 'No payload issues found.';
+    section.append(note);
+  }
+  for (const finding of findings) {
+    const item = document.createElement('div'); item.className = `check-finding ${finding.severity}`;
+    const label = document.createElement('strong'); label.textContent = finding.category;
+    const problem = document.createElement('p'); problem.textContent = finding.text;
+    const fix = document.createElement('p'); fix.textContent = `Suggested fix: ${finding.fix}`;
+    const link = document.createElement('a'); link.href = finding.source;
+    link.target = '_blank'; link.rel = 'noreferrer'; link.textContent = 'Vendor documentation';
+    item.append(label, problem, fix, link); section.append(item);
+  }
+  return section;
 }
 function readableEventDetails(event, existing) {
   const wasOpen = Boolean(existing?.open);
   const details = existing || document.createElement('details');
   details.className = 'event-details';
   const summary = document.createElement('summary'); summary.textContent = `View payload · ${event.payloadFields?.length || 0} fields`;
-  details.replaceChildren(summary, unifiedPayloadSection(event));
+  details.replaceChildren(summary, eventChecks(event), unifiedPayloadSection(event));
   details.open = wasOpen;
   return details;
 }
@@ -201,6 +233,7 @@ function eventSearchText(event) {
   return [
     event.platform, event.event, event.action || event.step, event.pixelId, event.endpoint,
     event.failed ? 'failed request' : event.status ? `HTTP ${event.status}` : 'response unconfirmed',
+    ...bestPracticeFindings([event]).map(finding => `${finding.category} ${finding.text} ${finding.fix}`),
     JSON.stringify(event.requiredFields || []), JSON.stringify(event.customFields || []), JSON.stringify(event.payloadFields || []),
   ].filter(Boolean).join(' ').toLowerCase();
 }
@@ -246,6 +279,14 @@ function render() {
   $('notice').textContent = audit?.notice || '';
   if (!audit) { syncVendorFilter([]); return; }
   syncVendorFilter(audit.events);
+  const checks = bestPracticeFindings(audit.events);
+  const issues = checks.filter(check => check.severity === 'error').length;
+  const covered = audit.events.filter(event => bestPracticeVendors.includes(event.platform)).length;
+  $('checkSummary').textContent = covered && !checks.length
+    ? 'Congratulations! No issues found.'
+    : `${issues} payload issues · ${checks.length - issues} recommendations across ${covered} ${bestPracticeVendors.join('/')} requests`;
+  $('checkCoverage').hidden = covered > 0 && !checks.length;
+  $('checkCoverage').textContent = covered ? 'Open a flagged event for the issue, fix, and vendor reference.' : `Checks run automatically on ${bestPracticeVendors.join(' and ')} requests.`;
   const journeyActions = (audit.actions || audit.steps || []).filter(action => action.replay);
   const vendors = new Set(audit.events.map(event => event.platform));
   const destinations = new Set(audit.events.map(event => `${event.platform}\u0000${event.pixelId || 'unknown'}`));
@@ -287,7 +328,7 @@ async function loadTab(explicitTabId) {
   await command('start', { tabId, url: tab.url });
 }
 $('clear').onclick = async () => {
-  if (!confirm('Clear this session? This cannot be undone.')) return;
+  if (!confirm('Clear results and start a fresh recording?')) return;
   const tabId = audit?.tabId;
   await command('clear', { tabId });
   await loadTab(tabId);
@@ -305,7 +346,7 @@ $('expandAll').onclick = () => setJourneyExpansion(true);
 $('collapseAll').onclick = () => setJourneyExpansion(false);
 function download(kind) {
   if (!audit || audit.recording) return;
-  const evidence = { ...audit }; delete evidence.findings;
+  const evidence = { ...audit, bestPractices: bestPracticeFindings(audit.events) }; delete evidence.findings;
   const content = kind === 'html' ? reportHtml(evidence) : kind === 'json' ? JSON.stringify(evidence, null, 2) : sessionSummary(evidence);
   const blob = new Blob([content], { type: kind === 'html' ? 'text/html' : kind === 'json' ? 'application/json' : 'text/plain' });
   const suffix = kind === 'summary' ? 'summary.txt' : `report.${kind}`;

@@ -42,7 +42,7 @@
     <section class="card capture-card">
       <p class="eyebrow">Current tab</p>
       <h2 id="captureTitle">Open a website to inspect</h2>
-      <p id="intro">Opening the panel or switching website tabs automatically records the selected tab’s page addresses, clicks, element labels, form submissions, and marketing request payloads. Payloads may contain personal identifiers and purchase details. Data stays in this browser; PixelMonitor receives no captured data.</p>
+      <p id="intro">Automatically captures page visits, clicks, form submissions, and pixel payloads in this tab. Data stays in your browser.</p>
       <div id="site" class="site-address"></div>
       <div class="actions capture-actions">
         <button id="stop" hidden>Pause</button>
@@ -50,7 +50,7 @@
       </div>
       <p id="notice" class="message notice-message" role="status"></p>
       <div id="controls" class="capture-context" hidden>
-        <div><strong>Actions are captured automatically</strong><p>Pages, clicks, and form submissions are recorded in this tab, including after navigation or closing the panel. Pause stops capture; Clear resets the results and keeps recording.</p></div>
+        <div><strong>Recording controls</strong><p>Pause stops recording. Clear resets the results. Recording continues when you close the panel.</p></div>
       </div>
     </section>
     <div id="results" hidden>
@@ -63,9 +63,14 @@
           <div><strong id="eventMetric">0</strong><span>Events</span></div>
         </div>
       </section>
+      <section class="card checks-card">
+        <h2>Vendor best-practice checks</h2>
+        <p id="checkSummary"></p>
+        <p id="checkCoverage"></p>
+      </section>
       <section class="card evidence-card">
         <div class="section-heading"><div><p class="eyebrow">What happened</p><h2>Visitor journey and pixels</h2></div><div class="count-group"><span id="actionCount" class="count-badge"></span><span id="count" class="count-badge"></span></div></div>
-        <p class="section-intro">Each visitor action is paired with the marketing requests observed afterward. Open an event to see its payload, with required, custom, and other fields marked.</p>
+        <p class="section-intro">See the requests recorded after each action. Open an event for its payload and suggested fixes.</p>
         <div class="filter-row">
           <select id="filter" aria-label="Filter vendor"><option value="">All vendors</option></select>
           <div class="search-control">
@@ -79,7 +84,7 @@
       <section class="card export-card">
         <p class="eyebrow">Session tools</p>
         <h2>Use this session</h2>
-        <p>Pause, then download captured data. Files may contain personal or sensitive information; review them before sharing.</p>
+        <p>Pause to download a report or session data. Review personal data before sharing.</p>
         <div class="export-grid">
           <button id="html"><span>Pixel report</span><small>Shareable HTML</small></button>
           <button id="json" class="secondary"><span>Session data</span><small>Structured JSON</small></button>
@@ -89,7 +94,7 @@
     </div>
     <footer>
       <div class="footer-heading"><strong>Private browser session</strong><div class="footer-links"><a class="feedback-link" href="mailto:mayur@pixelmonitor.app?subject=Pixel%20Inspector%20feedback">Send feedback</a><a class="feedback-link" href="privacy.html" target="_blank" rel="noreferrer">Privacy</a></div></div>
-      Data stays in this browser session until you clear it or close the tab. Server-side events and vendor attribution are outside this browser inspection.
+      Session data is cleared when you close the tab. Downloaded reports stay on your device.
     </footer>
   </main>
   <script type="module" src="panel.js"></script>

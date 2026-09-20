@@ -38,6 +38,8 @@ Load the `extension` directory as an unpacked extension in Chrome. There is no c
 
 Keep each pull request focused on one change. Explain the problem, resulting behavior, and verification performed. Update the relevant documentation when behavior changes.
 
+For vendor checks, cite the official documentation, distinguish required fields from conditional recommendations, and include examples that must not be flagged. Do not infer account configuration or server-side behavior from missing browser fields.
+
 For parser changes, add synthetic request fixtures and assertions to the appropriate `scripts/audit/*.test.mjs` file. Cover both recognized requests and nearby formats that should be ignored. Never add real customer payloads to tests.
 
 Run `pnpm test`. For capture or interface changes, also run `pnpm test:browser` and check the unpacked extension in Chrome. Browser checks use Playwright Chromium; no live customer website is required.
@@ -47,3 +49,20 @@ Generated ZIPs, local audit reports, and browser profiles do not belong in pull 
 ## License
 
 Contributions are made under this project's [Apache 2.0 license](LICENSE). Preserve existing attribution and identify any third-party code or assets included in your change.
+
+## Vendor rules
+
+Rules live in `extension/lib/rules/`, grouped by vendor. Each rule owns its stable `id`, default `severity`, documentation `source`, and `evaluate(event)` function. Evaluators receive a parsed request and return `{ text, fix }` when there is a finding, or `null` otherwise. They can use any JavaScript logic the check needs; there is no rule-expression language.
+
+Add rules to the relevant vendor module. Register new vendor modules in `extension/lib/vendor-rules.mjs`. Shared payload checks live in `rules/payload.mjs`; their documentation source defaults to the event vendor's entry in `rules/sources.mjs`.
+
+`extension/lib/rule-config.mjs` controls which vendors appear in best-practice results and optional per-rule settings:
+
+```js
+export const ruleSettings = {
+  'ga4.purchase_value': { enabled: false },
+  'meta.event_case': { severity: 'error' },
+};
+```
+
+Unlisted rules keep their defaults. Supported severities are `error` and `warning`. Disabling or overriding a rule applies to the audit analyzer and the extension's checks. `bestPracticeVendors` controls the best-practice UI/export coverage; it does not disable the audit analyzer's other vendor checks. All configuration ships with the extension and requires a reload or updated distribution to take effect.
