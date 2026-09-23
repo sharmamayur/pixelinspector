@@ -1,13 +1,13 @@
 {
   "name": "pixel-inspector",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "A Chrome extension for inspecting advertising and analytics pixels as you browse.",
   "license": "Apache-2.0",
   "scripts": {
     "test": "node --test scripts/audit/*.test.mjs",
     "test:browser": "node scripts/audit/extension-smoke.mjs",
-    "package:extension": "rm -rf dist && mkdir -p dist && cd extension && zip -qr ../dist/pixel-inspector-0.1.2.zip . -x '*.DS_Store' 'README.md' 'store-listing.md' 'store-assets/*' && cd .. && zip -q dist/pixel-inspector-0.1.2.zip LICENSE NOTICE"
+    "package:extension": "rm -rf dist && mkdir -p dist && cd extension && zip -qr ../dist/pixel-inspector-0.1.3.zip . -x '*.DS_Store' 'README.md' 'store-listing.md' 'store-assets/*' && cd .. && zip -q dist/pixel-inspector-0.1.3.zip LICENSE NOTICE"
   },
   "devDependencies": {
     "playwright": "^1.63.0"

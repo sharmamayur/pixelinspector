@@ -63,7 +63,7 @@ With pnpm and the `zip` command installed:
 pnpm package:extension
 ```
 
-The package is written to `dist/pixel-inspector-0.1.2.zip`, with `manifest.json`, `LICENSE`, and `NOTICE` at its root. The command replaces the contents of `dist`.
+The package is written to `dist/pixel-inspector-0.1.3.zip`, with `manifest.json`, `LICENSE`, and `NOTICE` at its root. The command replaces the contents of `dist`.
 
 Official store publishing is a maintainer task; see the [store listing and release checklist](extension/store-listing.md). Building a package does not publish it.
 

@@ -172,10 +172,12 @@ export function decodeMajorVendor(url, body = '') {
       })];
   }
 
-  if ((host === 'analytics.twitter.com' || host === 't.co') && /^\/i\/adsct\/?$/.test(path)) {
+  if (['analytics.twitter.com', 'analytics.x.com', 't.co'].includes(host) && /^\/(?:1\/)?i\/adsctp?\/?$/.test(path)) {
     const transaction = params.get('txn_id');
-    const parts = transaction?.match(/^([^-]+)-([^-]+)-(.+)$/);
-    return [event('X Ads', parts ? `Event ${parts[3]}` : 'PageView', parts?.[2] || params.get('pixel_id'), `${url.origin}/i/adsct`, {
+    const parts = transaction?.match(/^tw-([^-]+)-([^-]+)$/i);
+    // Base/legacy tags send the ID directly; event codes embed the pixel ID.
+    const pixelId = parts?.[1] || first(params.get('pixel_id'), transaction);
+    return [event('X Ads', parts ? `Event ${parts[2]}` : 'PageView', pixelId, `${url.origin}${path}`, {
       value: params.get('value'), currency: params.get('currency'),
       customFields: customFields([...params].filter(([key]) => ['value','currency','tw_sale_amount','tw_order_quantity'].includes(key))),
       payloadEntries: [...params],
