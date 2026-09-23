@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pixel Inspector by PixelMonitor",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "See which marketing pixels fire and what data they send as you browse.",
   "homepage_url": "https://www.pixelmonitor.app/",
   "minimum_chrome_version": "116",

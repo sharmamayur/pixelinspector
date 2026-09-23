@@ -95,6 +95,27 @@ test('Reddit, X and Adobe requests are classified conservatively', () => {
   assert.equal(adobe.payloadFields.find(field => field.name === 'aid').value, 'PRIVATE');
 });
 
+test('X Ads identifies bare tag IDs and event codes across GET and POST endpoints', () => {
+  for (const host of ['analytics.twitter.com', 'analytics.x.com', 't.co']) {
+    for (const path of ['/i/adsct', '/1/i/adsct', '/i/adsctp', '/1/i/adsctp']) {
+      for (const [transaction, pixelId, name] of [
+        ['o6ou1', 'o6ou1', 'PageView'],
+        ['tw-o6ou1-o9l96', 'o6ou1', 'Event o9l96'],
+      ]) {
+        const body = new URLSearchParams({ txn_id: transaction }).toString();
+        for (const event of [one(`https://${host}${path}?${body}`), one(`https://${host}${path}`, body)]) {
+          assert.deepEqual([event.platform, event.pixelId, event.event], ['X Ads', pixelId, name]);
+          assert.equal(event.payloadFields.find(field => field.name === 'txn_id').value, transaction);
+        }
+      }
+    }
+  }
+  assert.equal(one('https://analytics.twitter.com/i/adsct?pixel_id=explicit').pixelId, 'explicit');
+  assert.equal(one('https://analytics.twitter.com/i/adsct').pixelId, 'unknown');
+  assert.deepEqual(decodeEvents('https://analytics.twitter.com.evil.test/i/adsct?txn_id=o6ou1'), []);
+  assert.deepEqual(decodeEvents('https://static.ads-twitter.com/uwt.js'), []);
+});
+
 test('Criteo, Taboola and Outbrain retain complete payload fields', () => {
   const cases = [
     ['https://widget.us.criteo.com/event?account=123&event=viewHome&uid=PRIVATE', 'Criteo'],
