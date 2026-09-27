@@ -1,7 +1,6 @@
 import { sources } from './sources.mjs';
 import { present } from './helpers.mjs';
-
-const metaStandard = ['PageView','ViewContent','Search','AddToCart','AddToWishlist','InitiateCheckout','AddPaymentInfo','Purchase','Lead','CompleteRegistration','Contact','CustomizeProduct','Donate','FindLocation','Schedule','StartTrial','SubmitApplication','Subscribe'];
+import { metaStandardEvents } from '../meta-events.mjs';
 
 export default [
   {
@@ -18,7 +17,7 @@ export default [
     severity: 'warning',
     source: sources.Meta,
     evaluate(event) {
-      const standard = metaStandard.find(name => name.toLowerCase() === event.event.toLowerCase());
+      const standard = metaStandardEvents.find(name => name.toLowerCase() === event.event.toLowerCase());
       if (standard && standard !== event.event) return { text: `Event name differs from the standard event ${standard}.`, fix: `If this is intended as a standard event, send ${standard} with this capitalization. Custom events may be intentional.` };
       return null;
     },

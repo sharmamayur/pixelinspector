@@ -52,3 +52,17 @@ test('report escapes website-controlled content', () => {
   const html = reportHtml({site:'<script>alert(1)</script>',steps:[],events:[],findings:[]});
   assert.ok(!html.includes('<script>'));
 });
+
+test('Meta names are classified as standard or custom with exact capitalization', () => {
+  const standard = ['PageView', 'AddPaymentInfo', 'AddToCart', 'AddToWishlist', 'CompleteRegistration', 'Contact', 'CustomizeProduct', 'Donate', 'FindLocation', 'InitiateCheckout', 'Lead', 'Purchase', 'Schedule', 'Search', 'StartTrial', 'SubmitApplication', 'Subscribe', 'ViewContent'];
+  for (const name of standard) {
+    const [event] = decodeEvents(`https://www.facebook.com/tr/?id=123&ev=${name}`);
+    assert.equal(event.eventType, 'standard', name);
+  }
+  for (const name of ['NewsletterSignup', 'purchase', 'PURCHASE', 'Pageview', 'PurchaseComplete']) {
+    const [event] = decodeEvents(`https://www.facebook.com/tr/?id=123&ev=${name}`);
+    assert.equal(event.eventType, 'custom', name);
+    assert.equal(event.event, name);
+  }
+  assert.equal(decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=Purchase')[0].eventType, undefined);
+});

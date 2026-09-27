@@ -1,4 +1,5 @@
 import { bestPracticeVendors } from './rule-config.mjs';
+import { metaEventType, isMetaStandardField } from './meta-events.mjs';
 import { automaticFindings } from './automatic.mjs';
 import { decodeMajorVendor } from './major-vendors.mjs';
 import { vendorFindings, bestPracticeFindings } from './vendor-rules.mjs';
@@ -90,7 +91,7 @@ export function decodeEvents(rawUrl, body = '') {
       ...(event === 'conversion' ? [requiredField('Conversion label', params.get('label'), 'Identifies the Google Ads conversion action.')] : []),
     ] : [];
     const additional = meta
-      ? customFields([...params].filter(([key]) => /^cd\[.+\]$/.test(key)), event === 'Purchase' ? ['cd[value]','cd[currency]'] : [])
+      ? customFields([...params].filter(([key]) => /^cd\[.+\]$/.test(key) && !isMetaStandardField(key)), event === 'Purchase' ? ['cd[value]','cd[currency]'] : [])
       : ga
         ? customFields([...params].filter(([key]) => /^(?:ep|epn)\.|^pr\d+$/.test(key)), ['ep.transaction_id','epn.transaction_id'])
         : adsRecognized
@@ -101,6 +102,7 @@ export function decodeEvents(rawUrl, body = '') {
       platform: meta ? 'Meta' : ga ? 'GA4' : adsRecognized ? 'Google Ads' : 'Google tag',
       ...(ads && !adsRecognized ? { classificationNote: 'Google request format not recognized. No vendor setup checks applied.' } : {}),
       event: event.slice(0, 120),
+      ...(meta ? { eventType: metaEventType(event), standardFields: customFields([...params].filter(([key]) => isMetaStandardField(key))) } : {}),
       pixelId: ((meta ? params.get('id') : ga ? params.get('tid') : adsRecognized ? adsId : null) || 'unknown').slice(0, 100),
       value: params.get(meta ? 'cd[value]' : ga ? 'epn.value' : 'value') ?? params.get('ep.value'),
       currency: params.get(meta ? 'cd[currency]' : ga ? 'cu' : 'currency_code') ?? params.get('ep.currency'),
@@ -172,14 +174,19 @@ export function reportHtml(report) {
   const checkHtml = `<h2>Vendor best-practice checks</h2><p>${bestPracticeVendors.join(' and ')} payload checks only. No flags is not a complete implementation audit. Recommendations may depend on reporting goals. Action causation, server-side tracking, consent compliance, and vendor receipt are not verified.</p>${checks.length ? `<ul>${checks.map(f => `<li><b>${esc(f.category)}</b> · ${esc(f.eventId)} · Destination ${esc(f.pixelId)}<p>${esc(f.text)}</p><p>Suggested fix: ${esc(f.fix)}</p><a href="${esc(f.source)}">Vendor documentation</a></li>`).join('')}</ul>` : `<p>No issues found by the available checks on captured ${esc(bestPracticeVendors.join('/'))} requests.</p>`}`;
   const payloadHtml = event => {
     const required = (event.requiredFields || []).map(field => `${esc(field.name)}: ${esc(field.present ? field.value : 'Missing')}`).join('<br>') || 'Schema unavailable';
+    const requiredNames = new Set((event.requiredFields || []).map(field => field.name));
+    const standard = [
+      ...(event.requiredFields || []).map(field => `${esc(field.name)} (Required): ${esc(field.present ? field.value : 'Missing')}`),
+      ...(event.standardFields || []).filter(field => !requiredNames.has(field.name.replace(/^cd\[(.+)\]$/, '$1'))).map(field => `${esc(field.name)}: ${esc(field.value)}`),
+    ].join('<br>') || 'None observed';
     const custom = (event.customFields || []).map(field => `${esc(field.name)}: ${esc(field.value)}`).join('<br>') || 'None observed';
     const full = (event.payloadFields || []).map(field => `${esc(field.name)}: ${esc(field.value)}`).join('<br>') || 'None retained';
-    return `<b>Required</b><br>${required}<br><br><b>Custom</b><br>${custom}<br><br><b>Full payload</b><br>${full}`;
+    return `${event.platform === 'Meta' ? `<b>Standard</b><br>${standard}` : `<b>Required</b><br>${required}`}<br><br><b>Custom</b><br>${custom}<br><br><b>Full payload</b><br>${full}`;
   };
   const recorded = report.actions || report.steps || [];
   const actions = recorded.filter(action => action.replay);
   const timeline = actions.length ? actions : recorded;
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>PixelMonitor pixel inspection</title><style>body{font:16px/1.6 system-ui;max-width:1200px;margin:48px auto;padding:0 24px;color:#172033}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;vertical-align:top;border-bottom:1px solid #ddd;padding:10px}aside{background:#eff6ff;padding:16px}img{max-width:100%;border:1px solid #ddd}small{color:#526078}</style><h1>PixelMonitor pixel inspection</h1><p>${esc(report.site)} · ${esc(report.startedAt)}</p><p>Browser: ${esc(report.browser)} · Consent: ${esc(report.consent)}</p><aside>${esc(limitations)}</aside><h2>Visitor journey</h2><ol>${timeline.map(action => `<li><b>${esc(action.name.replace(/^\d+\.\s*/, ''))}</b> — ${esc(action.error || 'Completed')}<br><small>${esc(action.startedAt)} to ${esc(action.endedAt)}</small>${action.screenshot ? `<br><a href="${esc(action.screenshot)}">View action screenshot</a>` : ''}</li>`).join('')}</ol>${checkHtml}<h2>Observed browser requests</h2><table><tr><th>Evidence</th><th>After action / time</th><th>Platform / event</th><th>Pixel ID</th><th>Payload fields</th><th>HTTP</th></tr>${report.events.map(e => `<tr><td>${esc(e.id)}</td><td>${esc(e.action || e.step)}<br>${esc(e.at)}</td><td>${esc(e.platform)} / ${esc(e.event)}</td><td>${esc(e.pixelId)}</td><td>${payloadHtml(e)}</td><td>${esc(e.failed ? 'Failed' : e.status || 'Unconfirmed')}</td></tr>`).join('')}</table>`;
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>PixelMonitor pixel inspection</title><style>body{font:16px/1.6 system-ui;max-width:1200px;margin:48px auto;padding:0 24px;color:#172033}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;vertical-align:top;border-bottom:1px solid #ddd;padding:10px}aside{background:#eff6ff;padding:16px}img{max-width:100%;border:1px solid #ddd}small{color:#526078}</style><h1>PixelMonitor pixel inspection</h1><p>${esc(report.site)} · ${esc(report.startedAt)}</p><p>Browser: ${esc(report.browser)} · Consent: ${esc(report.consent)}</p><aside>${esc(limitations)}</aside><h2>Visitor journey</h2><ol>${timeline.map(action => `<li><b>${esc(action.name.replace(/^\d+\.\s*/, ''))}</b> — ${esc(action.error || 'Completed')}<br><small>${esc(action.startedAt)} to ${esc(action.endedAt)}</small>${action.screenshot ? `<br><a href="${esc(action.screenshot)}">View action screenshot</a>` : ''}</li>`).join('')}</ol>${checkHtml}<h2>Observed browser requests</h2><table><tr><th>Evidence</th><th>After action / time</th><th>Platform / event</th><th>Pixel ID</th><th>Payload fields</th><th>HTTP</th></tr>${report.events.map(e => `<tr><td>${esc(e.id)}</td><td>${esc(e.action || e.step)}<br>${esc(e.at)}</td><td>${esc(e.platform)} / ${esc(e.event)}${e.platform === 'Meta' ? `<br>${metaEventType(e.event) === 'standard' ? 'Standard event' : 'Custom event'}` : ''}</td><td>${esc(e.pixelId)}</td><td>${payloadHtml(e)}</td><td>${esc(e.failed ? 'Failed' : e.status || 'Unconfirmed')}</td></tr>`).join('')}</table>`;
 }
 export function sessionSummary(report) {
   const observed = [...new Set(report.events.map(e => `${e.platform} ${e.event}`))].join(', ');

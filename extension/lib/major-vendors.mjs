@@ -76,6 +76,52 @@ export function decodeMajorVendor(url, body = '') {
   const params = formParams(url, body);
   const json = jsonBody(body);
 
+  if (['api.amplitude.com', 'api2.amplitude.com', 'api.eu.amplitude.com'].includes(host)
+      && /^\/(?:2\/httpapi|batch|httpapi)\/?$/.test(path)) {
+    const events = json?.events ?? jsonBody(params.get('e'));
+    const key = first(json?.api_key, params.get('api_key'), params.get('client'));
+    if (!Array.isArray(events)) return [];
+    return events.flatMap(entry => {
+      if (typeof entry?.event_type !== 'string' || !entry.event_type.trim()) return [];
+      return [event('Amplitude', entry.event_type, key, `${url.origin}${path}`, {
+        value: entry.revenue, currency: entry.event_properties?.currency,
+        customFields: customFields(flattenFields(entry.event_properties || {})),
+        payloadEntries: [['api_key', key], ...flattenFields(entry)],
+      })];
+    });
+  }
+
+  const snowplowEnvelope = typeof json?.schema === 'string'
+    && /^iglu:com\.snowplowanalytics\.snowplow\/payload_data\/jsonschema\//.test(json.schema);
+  const snowplowPath = /^\/(?:com\.snowplowanalytics\.snowplow\/tp2|i|ice\.png|r\/tp2)\/?$/.test(path);
+  if (snowplowEnvelope || (snowplowPath && params.has('e') && params.has('tv'))) {
+    const entries = snowplowEnvelope ? json.data : [Object.fromEntries(params)];
+    if (!Array.isArray(entries)) return [];
+    return entries.flatMap(entry => {
+      if (typeof entry?.e !== 'string' || !entry.e.trim()) return [];
+      const decoded = {};
+      for (const [field, encoded] of [['ue_pr', false], ['ue_px', true], ['co', false], ['cx', true]]) {
+        if (typeof entry[field] !== 'string') continue;
+        try {
+          const raw = encoded
+            ? new TextDecoder().decode(Uint8Array.from(atob(entry[field].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)))
+            : entry[field];
+          decoded[field] = JSON.parse(raw);
+        } catch {}
+      }
+      const custom = (decoded.ue_pr || decoded.ue_px)?.data;
+      const schemaName = typeof custom?.schema === 'string' ? custom.schema.split('/')[1] : null;
+      const names = { pv: 'PageView', pp: 'PagePing', se: 'Structured event', ue: 'Self-describing event', tr: 'Transaction', ti: 'Transaction item' };
+      const name = entry.e === 'ue' ? schemaName || names.ue : entry.e === 'se' ? first(entry.se_ac, names.se) : names[entry.e] || entry.e;
+      return [event('Snowplow', name, first(entry.aid, host), `${url.origin}${path}`, {
+        value: first(entry.tr_tt, entry.ti_pr, entry.se_va), currency: first(entry.tr_cu, entry.ti_cu),
+        hasTransactionId: Boolean(entry.tr_id || entry.ti_id),
+        customFields: customFields([...flattenFields(custom?.data || {}), ...Object.entries(entry).filter(([key]) => key.startsWith('se_'))]),
+        payloadEntries: [...flattenFields(entry), ...flattenFields(decoded, 'decoded')],
+      })];
+    });
+  }
+
   if (host === 'analytics.tiktok.com' && /^\/api\/v\d+\/pixel(?:\/act)?\/?$/.test(path)) {
     const activity = /\/act\/?$/.test(path);
     let parsed = json;
