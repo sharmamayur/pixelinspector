@@ -66,15 +66,17 @@ try {
   assert.match(await destinationSummary.innerText(), /Pixel ID · 123 · 1 event/);
   await destinationSummary.click();
   assert.match(await cartAction.locator('.action-event-list').innerText(), /Meta · AddToCart[\s\S]*Destination 123/);
+  assert.match(await cartAction.locator('.event-heading').innerText(), /Standard event/);
   const firstDetails = panel.locator('[data-event-id="E1"] > details');
   await firstDetails.locator(':scope > summary').click();
   assert.equal(await firstDetails.locator(':scope > .event-explanation, :scope > dl').count(), 0);
   assert.deepEqual(await firstDetails.locator('.payload-fields h4').allTextContents(), ['Payload fields']);
   assert.match(await firstDetails.locator(':scope > summary').innerText(), /View payload · 5 fields/);
-  assert.match(await firstDetails.locator('.payload-fields').innerText(), /Required[\s\S]*Custom[\s\S]*Other[\s\S]*id[\s\S]*123[\s\S]*ev[\s\S]*AddToCart/);
+  assert.match(await firstDetails.locator('.payload-fields').innerText(), /Standard[\s\S]*Custom[\s\S]*Other[\s\S]*id[\s\S]*123[\s\S]*ev[\s\S]*AddToCart/);
   assert.match(await firstDetails.locator('.payload-fields').innerText(), /cd\[content_category\][\s\S]*Shoes[\s\S]*test_mode[\s\S]*enabled[\s\S]*customer_email[\s\S]*person@example.com/);
-  assert.deepEqual(await firstDetails.locator('.payload-row').evaluateAll(rows => rows.map(row => row.dataset.kind)), ['required', 'required', 'custom', 'other', 'other']);
+  assert.deepEqual(await firstDetails.locator('.payload-row').evaluateAll(rows => rows.map(row => row.dataset.kind)), ['standard', 'standard', 'standard', 'other', 'other']);
   assert.equal(await firstDetails.locator('.raw-data').count(), 0);
+  assert.match(await firstDetails.locator('.payload-row.field-standard').allTextContents().then(rows => rows.join(' ')), /content_category/);
   await panel.locator('#search').fill('AddToCart');
   assert.equal(await panel.locator('.event').count(), 1);
   assert.equal(await panel.locator('#journey > li').count(), 1);
@@ -268,6 +270,23 @@ try {
   await panel.locator('#expandAll').click();
   assert.equal(await panel.locator('.event').count(),2);
   assert.match(await panel.locator('#journey').innerText(), /snap-browser-two/);
+  for (const [platform, endpoint, payload, names, destination] of [
+    ['Amplitude', 'https://api2.amplitude.com/2/httpapi', {api_key:'amplitude-project',events:[{event_type:'Viewed'},{event_type:'Purchased'}]}, ['Viewed','Purchased'], 'amplitude-project'],
+    ['Snowplow', 'https://collector.fixture.test/com.snowplowanalytics.snowplow/tp2', {schema:'iglu:com.snowplowanalytics.snowplow/payload_data/jsonschema/1-0-4',data:[{e:'pv',aid:'snow-app'},{e:'pp',aid:'snow-app'}]}, ['PageView','PagePing'], 'snow-app'],
+  ]) {
+    await context.route(endpoint, route => route.fulfill({status:204,body:''}));
+    await website.evaluate(async ({endpoint,payload}) => {
+      await fetch(endpoint, {method:'POST',mode:'no-cors',body:JSON.stringify(payload)});
+    }, {endpoint,payload});
+    await panel.waitForFunction(async ({tabId,platform}) => (await chrome.storage.session.get('audits')).audits[tabId].events.filter(e => e.platform === platform).length === 2, {tabId,platform});
+    const events = (await send('get')).audit.events.filter(e => e.platform === platform);
+    assert.deepEqual(events.map(e => e.event), names);
+    assert.ok(events.every(e => e.pixelId === destination));
+    await panel.locator('#filter').selectOption(platform);
+    await panel.locator('#expandAll').click();
+    assert.equal(await panel.locator('.event').count(), 2);
+    assert.match(await panel.locator('#journey').innerText(), new RegExp(destination));
+  }
   // Scramble storage order to verify numeric E-ID ordering inside each
   // existing vendor/pixel group, including E2 versus E10.
   await send('stop');

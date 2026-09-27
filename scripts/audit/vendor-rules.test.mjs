@@ -11,8 +11,8 @@ test('Meta Purchase requires value/currency but AddToCart and custom events do n
 test('payload fields split required schema from website-supplied fields', () => {
   const [meta] = decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase&cd[value]=29.95&cd[currency]=USD&cd[content_category]=Shoes&cd[email]=person%40example.com');
   assert.deepEqual(meta.requiredFields.map(field => [field.name,field.present]), [['Pixel ID',true],['Event name',true],['value',true],['currency',true]]);
+  assert.deepEqual(meta.standardFields.map(f => f.name), ['cd[value]', 'cd[currency]', 'cd[content_category]']);
   assert.deepEqual(meta.customFields, [
-    {name:'cd[content_category]',value:'Shoes'},
     {name:'cd[email]',value:'Present (value not retained)'},
   ]);
   assert.ok(meta.payloadFields.some(field => field.name === 'cd[content_category]' && field.value === 'Shoes'));

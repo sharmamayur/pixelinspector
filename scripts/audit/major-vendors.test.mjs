@@ -171,3 +171,52 @@ test('Snapchat ignores diagnostics, preflights, sync, scripts, and lookalike hos
     assert.deepEqual(decodeEvents(url), []);
   }
 });
+
+test('Amplitude batches keep event names, project ID and per-event properties', () => {
+  for (const host of ['api.amplitude.com', 'api2.amplitude.com', 'api.eu.amplitude.com']) {
+    for (const path of ['/2/httpapi', '/batch']) {
+      const events = decodeEvents(`https://${host}${path}`, JSON.stringify({ api_key: 'project-123', events: [
+        { event_type: 'Purchase', revenue: 0, event_properties: { currency: 'USD', sku: 'A' } },
+        { event_type: '$identify', user_properties: { plan: 'Pro' } }, null, {},
+      ] }));
+      assert.deepEqual(events.map(e => [e.platform, e.event, e.pixelId]), [['Amplitude', 'Purchase', 'project-123'], ['Amplitude', '$identify', 'project-123']]);
+      assert.equal(events[0].value, '0');
+      assert.ok(events[0].customFields.some(f => f.name === 'sku' && f.value === 'A'));
+      assert.ok(!events[1].payloadFields.some(f => f.name === 'event_properties.sku'));
+    }
+  }
+  const form = new URLSearchParams({ client: 'legacy-key', e: JSON.stringify([{ event_type: 'Viewed' }]) });
+  assert.equal(one('https://api.amplitude.com/httpapi', form.toString()).pixelId, 'legacy-key');
+  assert.equal(one('https://api2.amplitude.com/2/httpapi', JSON.stringify({ events: [{event_type: 'Viewed'}] })).pixelId, 'unknown');
+});
+
+test('Snowplow parses first-party collectors, batches and encoded Unicode custom events', () => {
+  const custom = { schema: 'iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0', data: {
+    schema: 'iglu:com.shop/product_view/jsonschema/1-0-0', data: { name: 'Café ☕' },
+  } };
+  for (const field of ['ue_pr', 'ue_px']) {
+    const payload = { schema: 'iglu:com.snowplowanalytics.snowplow/payload_data/jsonschema/1-0-4', data: [
+      { e: 'pv', aid: 'store', tv: 'js-4.0.0' },
+      { e: 'ue', aid: 'store', [field]: field === 'ue_pr' ? JSON.stringify(custom) : Buffer.from(JSON.stringify(custom)).toString('base64url') },
+      { e: 'se', aid: 'other-app', se_ac: 'Clicked', se_ca: 'Button' }, null,
+    ] };
+    const events = decodeEvents('https://collect.shop.test/custom-path', JSON.stringify(payload));
+    assert.deepEqual(events.map(e => [e.event, e.pixelId]), [['PageView', 'store'], ['product_view', 'store'], ['Clicked', 'other-app']]);
+    assert.ok(events[1].customFields.some(f => f.value === 'Café ☕'));
+    assert.ok(!events[0].payloadFields.some(f => f.name === field));
+  }
+  assert.deepEqual([one('https://collect.shop.test/i?e=pp&tv=js-4.0.0').platform, one('https://collect.shop.test/i?e=pp&tv=js-4.0.0').pixelId], ['Snowplow', 'collect.shop.test']);
+  assert.equal(one('https://collect.shop.test/i?e=ue&tv=js-4&ue_px=invalid').event, 'Self-describing event');
+  assert.equal(one('https://collect.shop.test/i?e=tr&tv=js-4&tr_tt=0&tr_cu=USD').value, '0');
+});
+
+test('analytics parsers ignore scripts, unrelated requests and malformed batches', () => {
+  for (const [url, body] of [
+    ['https://api2.amplitude.com/2/httpapi', '{broken'],
+    ['https://api2.amplitude.com/2/httpapi', '{"events":{}}'],
+    ['https://api2.amplitude.com.evil.test/2/httpapi', '{"events":[{"event_type":"Test"}]}'],
+    ['https://cdn.amplitude.com/libs/amplitude.js', ''],
+    ['https://shop.test/i?e=pv', ''],
+    ['https://shop.test/com.snowplowanalytics.snowplow/tp2', '{}'],
+  ]) assert.deepEqual(decodeEvents(url, body), []);
+});

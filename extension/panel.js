@@ -1,5 +1,6 @@
 import { bestPracticeVendors } from './lib/rule-config.mjs';
 import { bestPracticeFindings } from './lib/vendor-rules.mjs';
+import { metaEventType, isMetaStandardField } from './lib/meta-events.mjs';
 import { reportHtml, sessionSummary, failureDetails } from './lib/analyze.mjs';
 const $ = id => document.getElementById(id);
 let audit = null;
@@ -48,25 +49,31 @@ function payloadRow(field, category, requirement, missing = false) {
   const term = row.querySelector('dt');
   const label = term.textContent;
   const indicator = document.createElement('span'); indicator.className = 'field-indicator';
-  const kind = missing ? 'Required field missing' : category === 'required' ? 'Required field' : category === 'custom' ? 'Custom field' : 'Other field';
+  const kind = missing ? 'Required field missing' : category === 'required' ? 'Required field' : category === 'standard' ? 'Standard field' : category === 'custom' ? 'Custom field' : 'Other field';
   indicator.title = kind; indicator.setAttribute('aria-label', kind);
   const name = document.createElement('span'); name.textContent = label;
   term.replaceChildren(indicator, name);
+  if (category === 'standard' && requirement) {
+    const marker = document.createElement('small'); marker.className = 'field-required-label';
+    marker.textContent = 'Required'; term.append(marker);
+  }
   return row;
 }
 function unifiedPayloadSection(event) {
   const section = document.createElement('section'); section.className = 'payload-fields unified-payload';
   const heading = document.createElement('h4'); heading.textContent = 'Payload fields';
   const legend = document.createElement('div'); legend.className = 'payload-legend';
-  for (const [kind, label] of [['required','Required'], ['custom','Custom'], ['other','Other']]) {
+  for (const [kind, label] of [...(event.platform === 'Meta' ? [['standard','Standard']] : [['required','Required']]), ['custom','Custom'], ['other','Other']]) {
     const item = document.createElement('span');
     const dot = document.createElement('i'); dot.className = `field-indicator field-${kind}`;
     if (kind === 'required') dot.style.background = '#2563eb';
+    if (kind === 'standard') dot.style.background = '#2563eb';
     if (kind === 'custom') dot.style.background = '#7c3aed';
     item.append(dot, label); legend.append(item);
   }
   const list = document.createElement('dl');
-  const rows = { required: [], custom: [], other: [] };
+  const rows = { required: [], standard: [], custom: [], other: [] };
+  const requiredKind = event.platform === 'Meta' ? 'standard' : 'required';
   const required = event.requiredFields || [];
   const custom = new Map((event.customFields || []).map(field => [field.name, field]));
   const matchedRequired = new Set();
@@ -75,7 +82,10 @@ function unifiedPayloadSection(event) {
     const requiredIndex = required.findIndex((candidate, index) => !matchedRequired.has(index) && requiredFieldMatch(field, candidate));
     if (requiredIndex >= 0) {
       matchedRequired.add(requiredIndex);
-      rows.required.push(payloadRow(field, 'required', required[requiredIndex].requirement));
+      rows[requiredKind].push(payloadRow(field, requiredKind, required[requiredIndex].requirement));
+    } else if (event.platform === 'Meta' && isMetaStandardField(field.name)) {
+      matchedCustom.add(field.name);
+      rows.standard.push(payloadRow(field, 'standard'));
     } else if (custom.has(field.name)) {
       matchedCustom.add(field.name);
       rows.custom.push(payloadRow(field, 'custom'));
@@ -85,12 +95,12 @@ function unifiedPayloadSection(event) {
   }
   required.forEach((field, index) => {
     if (matchedRequired.has(index)) return;
-    rows.required.push(payloadRow({ name: field.name, value: field.present ? field.value : 'Missing' }, 'required', field.requirement, !field.present));
+    rows[requiredKind].push(payloadRow({ name: field.name, value: field.present ? field.value : 'Missing' }, requiredKind, field.requirement, !field.present));
   });
   for (const field of custom.values()) {
     if (!matchedCustom.has(field.name)) rows.custom.push(payloadRow(field, 'custom'));
   }
-  list.append(...rows.required, ...rows.custom, ...rows.other);
+  list.append(...rows.required, ...rows.standard, ...rows.custom, ...rows.other);
   section.append(heading, legend);
   if (list.children.length) section.append(list);
   else { const empty = document.createElement('p'); empty.textContent = 'No payload fields were captured for this request.'; section.append(empty); }
@@ -117,6 +127,12 @@ function journeyEventCard(event, expandMatch = false) {
   const heading = document.createElement('div'); heading.className = 'event-heading';
   const title = document.createElement('strong'); title.textContent = `${event.platform} · ${event.event}`;
   heading.append(title);
+  if (event.platform === 'Meta') {
+    const type = document.createElement('small'); type.className = 'event-type';
+    type.classList.add(`event-type-${metaEventType(event.event)}`);
+    type.textContent = metaEventType(event.event) === 'standard' ? 'Standard event' : 'Custom event';
+    heading.append(type);
+  }
   const findings = bestPracticeFindings([event]);
   if (findings.length) {
     const badge = document.createElement('span'); badge.className = 'check-badge';

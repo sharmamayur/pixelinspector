@@ -24,7 +24,9 @@ Each browser tab has its own session. A session follows its tab through reloads 
 
 ## What PixelMonitor recognizes
 
-PixelMonitor recognizes browser requests from Meta, GA4, Google Ads, Google Floodlight, TikTok, Pinterest, LinkedIn, Snapchat, Microsoft Ads, Reddit Ads, X Ads, Adobe Analytics, Criteo, Taboola, and Outbrain. Script loads alone do not count as fired events.
+PixelMonitor recognizes browser requests from Meta, GA4, Google Ads, Google Floodlight, TikTok, Pinterest, LinkedIn, Snapchat, Microsoft Ads, Reddit Ads, X Ads, Adobe Analytics, Criteo, Taboola, Outbrain, Snowplow, and Amplitude. Script loads alone do not count as fired events.
+
+Amplitude supports US/EU HTTP API and batch requests, grouped by project API key. Snowplow supports tracker GET requests and JSON batches on first-party collectors, grouped by app ID (or collector hostname when absent), including decoded self-describing events.
 
 It records request outcomes and payload fields as evidence without labeling the site healthy or broken. Repeated events remain visible without assuming they are erroneous duplicates. Existing cookies, consent choices, ad blockers, and browser settings can affect what appears.
 
