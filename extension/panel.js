@@ -1,9 +1,11 @@
 import { bestPracticeVendors } from './lib/rule-config.mjs';
-import { bestPracticeFindings } from './lib/vendor-rules.mjs';
+import { bestPracticeFindings, checkedVendors } from './lib/vendor-rules.mjs';
 import { metaEventType, isMetaStandardField } from './lib/meta-events.mjs';
-import { reportHtml, sessionSummary, failureDetails } from './lib/analyze.mjs';
+import { reportHtml, sessionSummary, failureLabel } from './lib/analyze.mjs';
 const $ = id => document.getElementById(id);
 let audit = null;
+// The tab whose session the panel shows; only its storage key triggers a re-render.
+let shownTabId = null;
 let eventSession = null;
 let vendorFilterSignature = null;
 const openActions = new Set();
@@ -40,7 +42,7 @@ function requiredFieldMatch(payload, required) {
   const requiredName = normalizedFieldName(required.name);
   if (payloadName === requiredName || payloadName.endsWith(requiredName)) return true;
   const requiredValue = String(required.value ?? '');
-  return requiredValue && requiredValue !== 'Present (value not retained)' && String(payload.value) === requiredValue;
+  return requiredValue && String(payload.value) === requiredValue;
 }
 function payloadRow(field, category, requirement, missing = false) {
   const row = detailRow(field.name, field.value, requirement);
@@ -141,7 +143,7 @@ function journeyEventCard(event, expandMatch = false) {
   }
   const info = document.createElement('small'); info.textContent = `${new Date(event.at).toLocaleTimeString()} · Destination ${event.pixelId}`;
   const status = document.createElement('small'); status.className = 'event-status';
-  status.textContent = `${event.id} · ${event.failed ? failureDetails(event.failureReason).label : event.status ? `HTTP ${event.status}` : 'Response unconfirmed'}`;
+  status.textContent = `${event.id} · ${event.failed ? failureLabel(event.failureReason) : event.status ? `HTTP ${event.status}` : 'Response unconfirmed'}${event.viaServiceWorker ? ' · via service worker' : ''}`;
   const details = readableEventDetails(event); details.open = expandMatch || openEvents.has(event.id);
   details.addEventListener('toggle', () => details.open ? openEvents.add(event.id) : openEvents.delete(event.id));
   card.append(heading, info, status, details);
@@ -183,7 +185,7 @@ function groupedActionEvents(actionId, events, expandMatches = false) {
 function journeyItem(action, index, events, filtersActive, expandMatches = false, actionMatched = false) {
   const actionId = action.id || String(index);
   const item = document.createElement('li'); item.dataset.actionId = actionId;
-  const name = document.createElement('strong'); name.textContent = action.name.replace(/^\d+\.\s*/, '');
+  const name = document.createElement('strong'); name.textContent = action.name;
   const context = actionContext(action);
   const description = document.createElement('p'); description.className = 'action-context';
   const kind = document.createElement('span'); kind.textContent = context.type;
@@ -238,7 +240,7 @@ function readableEventDetails(event, existing) {
   return details;
 }
 function belongsToAction(event, action) {
-  return action.id && event.actionId ? event.actionId === action.id : (event.action || event.step) === action.name;
+  return action.id && event.actionId ? event.actionId === action.id : event.action === action.name;
 }
 function actionSearchText(action) {
   const context = actionContext(action);
@@ -247,7 +249,7 @@ function actionSearchText(action) {
 }
 function eventSearchText(event) {
   return [
-    event.platform, event.event, event.action || event.step, event.pixelId, event.endpoint,
+    event.platform, event.event, event.action, event.pixelId, event.endpoint,
     event.failed ? 'failed request' : event.status ? `HTTP ${event.status}` : 'response unconfirmed',
     ...bestPracticeFindings([event]).map(finding => `${finding.category} ${finding.text} ${finding.fix}`),
     JSON.stringify(event.requiredFields || []), JSON.stringify(event.customFields || []), JSON.stringify(event.payloadFields || []),
@@ -269,6 +271,7 @@ async function command(type, data = {}) {
     if (!Number.isInteger(tabId)) throw new Error('Select a browser tab first.');
     const result = await chrome.runtime.sendMessage({ type, ...data, tabId });
     if (result.error) throw new Error(result.error);
+    shownTabId = tabId;
     audit = result.audit;
     render();
   } catch (error) { $('error').textContent = error.message; }
@@ -300,10 +303,10 @@ function render() {
   const covered = audit.events.filter(event => bestPracticeVendors.includes(event.platform)).length;
   $('checkSummary').textContent = covered && !checks.length
     ? 'Congratulations! No issues found.'
-    : `${issues} payload issues · ${checks.length - issues} recommendations across ${covered} ${bestPracticeVendors.join('/')} requests`;
+    : `${issues} payload issues · ${checks.length - issues} recommendations across ${covered} checked requests`;
   $('checkCoverage').hidden = covered > 0 && !checks.length;
-  $('checkCoverage').textContent = covered ? 'Open a flagged event for the issue, fix, and vendor reference.' : `Checks run automatically on ${bestPracticeVendors.join(' and ')} requests.`;
-  const journeyActions = (audit.actions || audit.steps || []).filter(action => action.replay);
+  $('checkCoverage').textContent = covered ? 'Open a flagged event for the issue, fix, and vendor reference.' : `Checks run automatically on ${checkedVendors} requests.`;
+  const journeyActions = audit.actions.filter(action => action.replay);
   const vendors = new Set(audit.events.map(event => event.platform));
   const destinations = new Set(audit.events.map(event => `${event.platform}\u0000${event.pixelId || 'unknown'}`));
   $('actionMetric').textContent = journeyActions.length;
@@ -362,7 +365,7 @@ $('expandAll').onclick = () => setJourneyExpansion(true);
 $('collapseAll').onclick = () => setJourneyExpansion(false);
 function download(kind) {
   if (!audit || audit.recording) return;
-  const evidence = { ...audit, bestPractices: bestPracticeFindings(audit.events) }; delete evidence.findings;
+  const evidence = { ...audit, bestPractices: bestPracticeFindings(audit.events) };
   const content = kind === 'html' ? reportHtml(evidence) : kind === 'json' ? JSON.stringify(evidence, null, 2) : sessionSummary(evidence);
   const blob = new Blob([content], { type: kind === 'html' ? 'text/html' : kind === 'json' ? 'application/json' : 'text/plain' });
   const suffix = kind === 'summary' ? 'summary.txt' : `report.${kind}`;
@@ -370,20 +373,17 @@ function download(kind) {
 }
 for (const id of ['html','json','summary']) $(id).onclick = () => download(id);
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'session' || !changes.audits) return;
-  const audits = changes.audits.newValue || {};
-  if (audit?.tabId != null) {
-    audit = audits[audit.tabId] || null;
-    render();
-  } else {
-    const available = Object.values(audits);
-    if (available.length === 1) { audit = available[0]; render(); }
-    else command('get');
-  }
+  const change = area === 'session' && shownTabId != null && changes[`audit:${shownTabId}`];
+  if (!change) return;
+  audit = change.newValue || null;
+  render();
+});
+// Sent when the worker could not write a session to storage; fetch it from the worker instead.
+chrome.runtime.onMessage.addListener(message => {
+  if (message?.type === 'session-changed' && message.tabId === shownTabId) command('get', { tabId: shownTabId });
 });
 chrome.tabs.onActivated.addListener(({ tabId }) => loadTab(tabId));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab.active && (changeInfo.url || changeInfo.status === 'complete')) loadTab(tabId);
 });
 loadTab();
-setInterval(() => { if (audit?.recording) command('get'); }, 2000);

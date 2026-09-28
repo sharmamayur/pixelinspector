@@ -1,8 +1,8 @@
-import { bestPracticeFindings } from '../../extension/lib/vendor-rules.mjs';
+import { bestPracticeFindings, vendorFindings } from '../extension/lib/vendor-rules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeEvents, analyze, reportHtml } from './analyze.mjs';
-const inspect = (url, body = '') => analyze([{name:'test'}], decodeEvents(url,body).map((event,i)=>({...event,step:'test',id:`E${i+1}`})));
+import { decodeEvents, reportHtml } from '../extension/lib/analyze.mjs';
+const inspect = (url, body = '') => decodeEvents(url,body).flatMap((event,i)=>vendorFindings({...event,id:`E${i+1}`}));
 const codes = findings => findings.map(f=>f.code);
 test('Meta Purchase requires value/currency but AddToCart and custom events do not', () => {
   assert.ok(codes(inspect('https://www.facebook.com/tr/?id=123&ev=Purchase')).includes('meta.purchase_fields'));
@@ -13,13 +13,13 @@ test('payload fields split required schema from website-supplied fields', () => 
   assert.deepEqual(meta.requiredFields.map(field => [field.name,field.present]), [['Pixel ID',true],['Event name',true],['value',true],['currency',true]]);
   assert.deepEqual(meta.standardFields.map(f => f.name), ['cd[value]', 'cd[currency]', 'cd[content_category]']);
   assert.deepEqual(meta.customFields, [
-    {name:'cd[email]',value:'Present (value not retained)'},
+    {name:'cd[email]',value:'person@example.com'},
   ]);
   assert.ok(meta.payloadFields.some(field => field.name === 'cd[content_category]' && field.value === 'Shoes'));
   assert.equal(meta.payloadFields.find(field => field.name === 'cd[email]').value, 'person@example.com');
 
   const [ga4] = decodeEvents('https://www.google-analytics.com/g/collect?tid=G-123&en=purchase&ep.transaction_id=ORDER-PRIVATE&epn.value=20&ep.currency=USD&pr1=idSKU~nmShoe&ep.coupon=SPRING');
-  assert.equal(ga4.requiredFields.find(field => field.name === 'transaction_id').value, 'Present (value not retained)');
+  assert.equal(ga4.requiredFields.find(field => field.name === 'transaction_id').value, 'ORDER-PRIVATE');
   assert.equal(ga4.requiredFields.find(field => field.name === 'items').value, '1 item');
   assert.ok(ga4.customFields.some(field => field.name === 'ep.coupon' && field.value === 'SPRING'));
   assert.equal(ga4.payloadFields.find(field => field.name === 'ep.transaction_id').value, 'ORDER-PRIVATE');
@@ -58,18 +58,10 @@ test('Google Ads remarketing is not a mislabeled conversion; defaults are allowe
   assert.equal(inspect('https://www.googleadservices.com/pagead/conversion/123/?label=ABC').length,0);
   assert.ok(codes(inspect('https://www.googleadservices.com/pagead/conversion/123/?label=ABC&value=bad')).includes('payload.value'));
 });
-test('live validation flags observed malformed payload immediately but defers missing expectations', () => {
-  const steps=[{name:'test',expect:[{platform:'GA4',event:'purchase'}]}];
-  const events=decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase').map(e=>({...e,step:'test',id:'E1'}));
-  const findings=analyze(steps,events,{live:true});
-  assert.ok(codes(findings).includes('meta.purchase_fields'));
-  assert.ok(!codes(findings).includes('event.not_observed'));
-  assert.ok(codes(analyze([{...steps[0],endedAt:'now'}],events,{live:true})).includes('event.not_observed'));
-});
 test('reports include request-level vendor checks with evidence and references', () => {
   const findings=inspect('https://www.facebook.com/tr/?id=123&ev=Purchase');
   const events=decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase');
-  const html=reportHtml({site:'test',startedAt:'2026-01-01',browser:'test',consent:'test',steps:[],events,findings});
+  const html=reportHtml({site:'test',startedAt:'2026-01-01',browser:'test',actions:[],events,findings});
   assert.match(html,/Observed browser requests/);
   assert.match(html,/Vendor best-practice checks/);
   assert.match(html,/Vendor documentation/);
@@ -96,7 +88,7 @@ test('unrecognized Google destination formats are neutral, not malformed-ID erro
 });
 test('unknown IDs in older Google Ads records do not generate setup errors', () => {
   for (const pixelId of ['unknown', 'G-4WL8DDJFSY']) {
-    const findings = analyze([{name:'test'}], [{platform:'Google Ads', event:'remarketing', pixelId, step:'test', id:'E1'}]);
+    const findings = vendorFindings({platform:'Google Ads', event:'remarketing', pixelId,  id:'E1'});
     assert.equal(findings.length, 0);
   }
 });
@@ -150,7 +142,7 @@ test('best-practice checks use request evidence independently of actions and HTT
   for (const status of [200, 400, undefined]) {
     assert.deepEqual(bestPracticeFindings([{...event,id:'E1',actionId:'different',status}]), checks);
   }
-  assert.equal(bestPracticeFindings([{platform:'Pinterest',event:'checkout',pixelId:'unknown'}]).length,0);
+  assert.equal(bestPracticeFindings([{platform:'TikTok',event:'Purchase',pixelId:'unknown',value:'bad'}]).length,0);
 });
 test('GA4 recommendations are distinct from invalid payloads and include sources', () => {
   const [event] = decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=purchase&ep.transaction_id=ORDER&pr1=idSKU');
@@ -172,4 +164,23 @@ test('normal events are not flagged for unseen CAPI, deduplication, or optional 
     ...decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=page_view'),
   ];
   assert.deepEqual(bestPracticeFindings(events), []);
+});
+test('Pinterest commerce rules match event codes regardless of case', () => {
+  assert.ok(codes(vendorFindings({platform:'Pinterest',event:'AddToCart',pixelId:'123',value:'10',currency:null})).includes('pinterest.currency'));
+});
+test('Google Ads flags value without currency on legacy and /ccm/collect conversions, not remarketing', () => {
+  const check = url => codes(bestPracticeFindings(decodeEvents(url).map(event => ({...event,id:'E1'}))));
+  assert.ok(check('https://www.google.com/ccm/collect?tid=AW-123456&en=purchase&value=20').includes('ads.currency'));
+  assert.ok(!check('https://www.google.com/ccm/collect?tid=AW-123456&en=purchase&value=20&currency=USD').includes('ads.currency'));
+  assert.ok(check('https://www.googleadservices.com/pagead/conversion/123/?label=ABC&value=20').includes('ads.currency'));
+  assert.deepEqual(check('https://www.googleadservices.com/pagead/viewthroughconversion/123/?value=0'), []);
+});
+test('Pinterest checks commerce events only; ordinary page visits are not flagged', () => {
+  const check = url => codes(bestPracticeFindings(decodeEvents(url).map(event => ({...event,id:'E1'}))));
+  assert.deepEqual(check('https://ct.pinterest.com/v3/?tid=123'), []);
+  assert.deepEqual(check('https://ct.pinterest.com/v3/?tid=123&event=addtocart&ed[value]=10'), ['pinterest.currency','pinterest.product_id']);
+});
+test('Microsoft Ads receives shared value and currency format checks', () => {
+  const [event] = decodeEvents('https://bat.bing.com/action/0?ti=123&evt=custom&ea=purchase&gv=$10&gc=usd');
+  assert.deepEqual(codes(bestPracticeFindings([{...event,id:'E1'}])), ['payload.value','payload.currency']);
 });

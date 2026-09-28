@@ -20,30 +20,35 @@ First [download or clone the repository](../README.md#install-from-source). You 
 5. Browse events by vendor and pixel ID. Open an event to inspect one payload field list. Badges distinguish vendor-required fields, website-specific custom fields, and other fields sent with the request.
 6. Wait for delayed events, then click **Pause** when you want to stop capturing. Click **Resume** to continue the same session.
 
-Each browser tab has its own session. A session follows its tab through reloads and navigation, including cross-domain navigation, and continues when you switch tabs. While the panel is open, switching to another website tab starts its inspection automatically. Clear deletes the captured results and immediately starts a fresh recording. Use Pause to stop capture. Closing a tab deletes its session. Closing and reopening the side panel does not stop inspection. Each tab stops at 1,000 events.
+Each browser tab has its own session. A session follows its tab through reloads and navigation, including cross-domain navigation, and continues when you switch tabs. While the panel is open, switching to another website tab starts its inspection automatically. Clear deletes the captured results and immediately starts a fresh recording. Use Pause to stop capture. Closing a tab deletes its session. Closing and reopening the side panel does not stop inspection. A tab's session pauses, with a notice, at 1,000 events or 250 recorded actions, or when all sessions together approach Chrome's 10 MB extension session storage limit. Very large payloads reach the storage limit sooner.
 
 ## What PixelMonitor recognizes
 
 PixelMonitor recognizes browser requests from Meta, GA4, Google Ads, Google Floodlight, TikTok, Pinterest, LinkedIn, Snapchat, Microsoft Ads, Reddit Ads, X Ads, Adobe Analytics, Criteo, Taboola, Outbrain, Snowplow, and Amplitude. Script loads alone do not count as fired events.
 
-Amplitude supports US/EU HTTP API and batch requests, grouped by project API key. Snowplow supports tracker GET requests and JSON batches on first-party collectors, grouped by app ID (or collector hostname when absent), including decoded self-describing events.
+Meta Pixel requests sent through a first-party proxy are recognized when they keep the Pixel's `/tr` path, numeric pixel ID, and event parameter. Amplitude supports US/EU HTTP API and batch requests, and SDK requests sent to a custom server URL, grouped by project API key. Snowplow supports tracker GET requests and JSON batches on first-party collectors, grouped by app ID (or collector hostname when absent), including decoded self-describing events.
 
 It records request outcomes and payload fields as evidence without labeling the site healthy or broken. Repeated events remain visible without assuming they are erroneous duplicates. Existing cookies, consent choices, ad blockers, and browser settings can affect what appears.
 
 Automatic capture records clicks, product URL patterns (`/product/`, `/products/`, `/p/`), product metadata, ordinary page navigation, and URL-changing single-page navigation. Forms are labeled as submitted without assuming a purchase or lead succeeded. Other languages and unusual controls appear as generic clicks; embedded frames may be missed.
 
+Pixels sent by a website's service worker have no tab of their own. They are attributed to a recording tab only when exactly one recording tab is on that website's origin, and are marked "via service worker".
+
 ## Vendor best-practice checks
 
-The panel flags observed **Meta and GA4** payload issues and recommendations. Open a flagged event for the finding, suggested fix, vendor reference, and original payload. HTML, JSON, and plain-text exports include these checks; JSON stores them under `bestPractices`.
+The panel flags observed **Meta, GA4, Google Ads, Pinterest, and Microsoft Ads** payload issues and recommendations. Open a flagged event for the finding, suggested fix, vendor reference, and original payload. HTML, JSON, and plain-text exports include these checks; JSON stores them under `bestPractices`.
 
 - **Meta:** pixel ID format, standard-event capitalization, missing Purchase value/currency, and numeric value/currency format.
 - **GA4:** measurement ID format, event-name characters and length, ecommerce-event capitalization, purchase transaction ID, item presence and identity, currency when value is sent, purchase value, and value/currency format.
+- **Google Ads:** currency when a conversion sends a value (remarketing requests are exempt), and value/currency format.
+- **Pinterest:** currency and product ID on `checkout` and `addtocart` events, and value/currency format.
+- **Microsoft Ads:** value/currency format.
 
 **Payload issue** means a recognized request failed a field or format check. **Recommendation** means it needs review in the context of your reporting goals or payload encoding. Checks run when a request is captured; HTTP 200 does not prove the payload is correct.
 
 These are limited request-level checks, not a complete vendor audit. They do not establish action causation, catalog matching, account settings, consent compliance, server-side delivery, CAPI deduplication, or vendor receipt. Other vendors are still captured but are not covered by this feature. No findings does not mean the implementation is correct.
 
-References: [Meta Pixel](https://developers.facebook.com/docs/meta-pixel/reference/), [GA4 events](https://developers.google.com/analytics/devguides/collection/ga4/reference/events), [GA4 event names](https://support.google.com/analytics/answer/13316687), and [GA4 collection limits](https://support.google.com/analytics/answer/9267744).
+References: [Meta Pixel](https://developers.facebook.com/docs/meta-pixel/reference/), [GA4 events](https://developers.google.com/analytics/devguides/collection/ga4/reference/events), [GA4 event names](https://support.google.com/analytics/answer/13316687), and [GA4 collection limits](https://support.google.com/analytics/answer/9267744), [Google Ads conversion values](https://support.google.com/google-ads/answer/6095947), [Pinterest event codes](https://help.pinterest.com/en/business/article/add-event-codes), and [Microsoft Advertising UET](https://learn.microsoft.com/en-us/advertising/guides/universal-event-tracking?view=bingads-13).
 
 ## Privacy and limits
 
@@ -67,7 +72,7 @@ For a cloned repository, run `git pull --ff-only` from its folder when your chec
 - **No events appear:** open the panel before refreshing the website. Confirm recording is active, and check consent choices, ad blockers, and Chrome's site-access settings. Only supported request formats appear; script downloads alone do not count.
 - **The panel does not inspect a page:** use an ordinary HTTP(S) website. Chrome restricts extensions on browser-internal pages and other protected pages.
 - **Changes to the source do not appear:** reload the extension, then refresh the inspected tab.
-- **Recording stops at 1,000 events:** export the paused session if needed, then use **Clear** to start a new one.
+- **Recording stops at 1,000 events, 250 actions, or the storage limit:** export the paused session if needed, then use **Clear** to start a new one.
 
 For bugs or feature requests, use [GitHub Issues](https://github.com/sharmamayur/pixelinspector/issues). Remove personal data from screenshots and reports before posting them. Send sensitive reports to [mayur@pixelmonitor.app](mailto:mayur@pixelmonitor.app).
 

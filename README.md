@@ -6,7 +6,7 @@ Pixel Inspector runs locally. No account, subscription, or PixelMonitor service 
 
 ## Install from source
 
-Requires Chrome 116 or later. Node.js and pnpm are only needed for development and the optional command-line audit tool.
+Requires Chrome 116 or later. Node.js and pnpm are only needed for development.
 
 1. Download and extract this repository using **Code → Download ZIP**, or clone it:
 
@@ -25,7 +25,7 @@ Keep the source folder on your computer: Chrome loads the extension from that lo
 
 1. Open a website you own or are authorized to inspect, then click the extension's toolbar icon.
 2. Inspection starts automatically. Refresh the website to capture requests made during page load.
-3. Browse the site and expand events to inspect their payloads and Meta/GA4 best-practice findings. Each finding includes a suggested fix and vendor documentation. Search or filter by vendor to narrow the results.
+3. Browse the site and expand events to inspect their payloads and best-practice findings for Meta, GA4, Google Ads, Pinterest, and Microsoft Ads. Each finding includes a suggested fix and vendor documentation. Search or filter by vendor to narrow the results.
 4. Use **Pause** to stop capture and enable HTML, JSON, or plain-text exports. **Resume** continues recording. **Clear** removes the results and immediately starts a new recording.
 
 While the panel is open, switching website tabs starts separate inspection sessions. Closing the panel does not stop an existing recording; use **Pause**. Closing a website tab deletes its session.
@@ -53,7 +53,7 @@ pnpm test:browser
 
 There is no extension build step. After editing files in `extension`, click **Reload** on the extension's card at `chrome://extensions`, then refresh the website you are inspecting. Extension reloads clear its session data.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, bug reports, and pull requests. The optional [command-line audit tool](scripts/audit/README.md) runs repeatable browser journeys and saves local reports.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, bug reports, and pull requests.
 
 ## Package from source
 
@@ -63,7 +63,7 @@ With pnpm and the `zip` command installed:
 pnpm package:extension
 ```
 
-The package is written to `dist/pixel-inspector-0.1.4.zip`, with `manifest.json`, `LICENSE`, and `NOTICE` at its root. The command replaces the contents of `dist`.
+The package is written to `dist/pixel-inspector-<version>.zip`, using the version in `extension/manifest.json`, with `manifest.json`, `LICENSE`, and `NOTICE` at its root. The command replaces the contents of `dist`.
 
 Official store publishing is a maintainer task; see the [store listing and release checklist](extension/store-listing.md). Building a package does not publish it.
 

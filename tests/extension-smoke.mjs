@@ -38,15 +38,15 @@ try {
   await panel.waitForTimeout(500);
   assert.equal((await send('get')).audit.actions.length, 1);
   await website.getByRole('button', {name:'Open filters'}).click();
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].actions.some(action => action.action === 'click'), tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].actions.some(action => action.action === 'click'), tabId);
   const genericClick = (await send('get')).audit.actions.find(action => action.action === 'click').replay;
   assert.deepEqual({role:genericClick.role,name:genericClick.name,selector:genericClick.selector,tag:genericClick.tag}, {role:'button',name:'Open filters',selector:'button[data-testid="filters"]',tag:'button'});
   await website.getByRole('button', {name:'Add to cart'}).click();
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].actions.some(action => action.action === 'cart'), tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].actions.some(action => action.action === 'cart'), tabId);
   // Drive Chrome's actual webRequest lifecycle while fulfilling locally so no test pixel leaves the browser.
   await context.route('https://www.facebook.com/tr/**', route => route.fulfill({ status: 204, body: '' }));
   await website.evaluate(() => { const image = new Image(); image.src='https://www.facebook.com/tr/?id=123&ev=AddToCart&cd[content_category]=Shoes&test_mode=enabled&customer_email=person%40example.com'; });
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].events.length === 1, tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].events.length === 1, tabId);
   await website.bringToFront();
   await panel.reload();
   assert.deepEqual(await panel.locator('#filter option').allTextContents(), ['All vendors', 'Meta']);
@@ -110,9 +110,9 @@ try {
   assert.equal(await firstDetails.evaluate(node => node.open), true);
   await website.goto('https://audit-fixture.test/next');
   await website.evaluate(() => { const image = new Image(); image.src='https://www.facebook.com/tr/?id=123&ev=PageView'; });
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].events.length === 2, tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].events.length === 2, tabId);
   await website.evaluate(() => { const image = new Image(); image.src='https://www.facebook.com/tr/?id=123&ev=Purchase&cd[value]=oops&cd[currency]=usd'; });
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].events.length === 3, tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].events.length === 3, tabId);
   await panel.waitForFunction(() => document.querySelector('#checkSummary')?.textContent.includes('2 payload issues'));
   const purchaseCard = panel.locator('[data-event-id="E3"]');
   assert.match(await purchaseCard.locator('.check-badge').textContent(), /2 checks flagged/);
@@ -128,11 +128,11 @@ try {
   await other.goto('https://audit-fixture.test/other');
   await other.evaluate(() => { const image = new Image(); image.src='https://www.facebook.com/tr/?id=456&ev=Purchase'; });
   const otherTabId = await worker.evaluate(async () => (await chrome.tabs.query({})).find(t => t.url?.includes('/other')).id);
-  await panel.waitForFunction(async otherTabId => Boolean((await chrome.storage.session.get('audits')).audits[otherTabId]?.recording), otherTabId);
+  await panel.waitForFunction(async otherTabId => Boolean((await chrome.storage.session.get(`audit:${otherTabId}`))[`audit:${otherTabId}`]?.recording), otherTabId);
   assert.equal((await send('get')).audit.events.length, 3);
   assert.equal((await send('get', {tabId:otherTabId})).audit.recording, true);
   await other.evaluate(() => { const image = new Image(); image.src='https://www.facebook.com/tr/?id=456&ev=PageView'; });
-  await panel.waitForFunction(async otherTabId => (await chrome.storage.session.get('audits')).audits[otherTabId].events.length === 1, otherTabId);
+  await panel.waitForFunction(async otherTabId => (await chrome.storage.session.get(`audit:${otherTabId}`))[`audit:${otherTabId}`].events.length === 1, otherTabId);
   assert.equal((await send('get', {tabId:otherTabId})).audit.events[0].pixelId, '456');
   await context.route('https://analytics.tiktok.com/api/v2/pixel/act', route => route.fulfill({ status: 204, body: '' }));
   await other.evaluate(() => fetch('https://analytics.tiktok.com/api/v2/pixel/act', {
@@ -141,13 +141,12 @@ try {
       auto_collected_properties: { page_trigger: 'PageView' },
     }),
   }));
-  await panel.waitForFunction(async otherTabId => (await chrome.storage.session.get('audits')).audits[otherTabId].events.length === 2, otherTabId);
+  await panel.waitForFunction(async otherTabId => (await chrome.storage.session.get(`audit:${otherTabId}`))[`audit:${otherTabId}`].events.length === 2, otherTabId);
   const tikTok = (await send('get', {tabId:otherTabId})).audit.events.find(event => event.platform === 'TikTok');
   assert.deepEqual([tikTok.event, tikTok.pixelId], ['Auto PageView', 'CTIKTOK123']);
   assert.equal((await send('get')).audit.events.length, 3);
   await send('stop', {tabId:otherTabId});
   await send('clear', {tabId:otherTabId});
-  await send('consent', {value:'Accepted during Cart'});
   const stopped = (await send('stop')).audit;
   assert.equal(stopped.events.length, 3);
   assert.equal(stopped.events[0].event, 'AddToCart');
@@ -210,7 +209,7 @@ try {
   panel.once('dialog', dialog => dialog.accept());
   await panel.locator('#clear').click();
   await panel.waitForFunction(async tabId => {
-    const current = (await chrome.storage.session.get('audits')).audits[tabId];
+    const current = (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`];
     return current?.recording && current.events.length === 0;
   }, tabId);
   // A pixel fires during document parsing, before the document_idle observer.
@@ -221,18 +220,18 @@ try {
   }));
   const beforeReload = (await send('get')).audit.startedAt;
   await website.reload();
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].events.length === 1, tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].events.length === 1, tabId);
   const refreshed = (await send('get')).audit;
   assert.equal(refreshed.recording, true);
   assert.equal(refreshed.startedAt, beforeReload);
   assert.equal(refreshed.events[0].pixelId, '789');
   assert.equal(refreshed.events[0].event, 'PageView');
   await website.getByRole('button', {name:'Open filters'}).click();
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].actions.some(action => action.action === 'click'), tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].actions.some(action => action.action === 'click'), tabId);
   // Also recover an absent session on same-URL reload, without a URL change.
   await send('clear');
   await website.reload();
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId]?.recording, tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`]?.recording, tabId);
   await send('clear');
   await website.goto('about:blank');
   await website.bringToFront();
@@ -247,7 +246,7 @@ try {
     document.body.append(editor);
   });
   await website.locator('[contenteditable]').click();
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].actions.length === 2, tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].actions.length === 2, tabId);
   assert.equal(JSON.stringify((await send('get')).audit).includes('private typed content'), false);
   // Exercise JSON POST capture through Chrome's real webRequest pipeline.
   await context.route('https://tr.snapchat.com/**', route => route.fulfill({status:204,body:''}));
@@ -261,7 +260,7 @@ try {
       ]}),
     });
   });
-  await panel.waitForFunction(async tabId => (await chrome.storage.session.get('audits')).audits[tabId].events.filter(e => e.platform === 'Snapchat').length === 2, tabId);
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].events.filter(e => e.platform === 'Snapchat').length === 2, tabId);
   const snapEvents = (await send('get')).audit.events.filter(e => e.platform === 'Snapchat');
   assert.deepEqual(snapEvents.map(e => [e.event,e.pixelId]), [['PAGE_VIEW','snap-browser-one'],['PURCHASE','snap-browser-two']]);
   assert.equal(snapEvents[1].value,'5');
@@ -278,7 +277,7 @@ try {
     await website.evaluate(async ({endpoint,payload}) => {
       await fetch(endpoint, {method:'POST',mode:'no-cors',body:JSON.stringify(payload)});
     }, {endpoint,payload});
-    await panel.waitForFunction(async ({tabId,platform}) => (await chrome.storage.session.get('audits')).audits[tabId].events.filter(e => e.platform === platform).length === 2, {tabId,platform});
+    await panel.waitForFunction(async ({tabId,platform}) => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].events.filter(e => e.platform === platform).length === 2, {tabId,platform});
     const events = (await send('get')).audit.events.filter(e => e.platform === platform);
     assert.deepEqual(events.map(e => e.event), names);
     assert.ok(events.every(e => e.pixelId === destination));
@@ -291,13 +290,13 @@ try {
   // existing vendor/pixel group, including E2 versus E10.
   await send('stop');
   await panel.evaluate(async tabId => {
-    const { audits } = await chrome.storage.session.get('audits');
-    const audit = audits[tabId];
+    const key = `audit:${tabId}`;
+    const { [key]: audit } = await chrome.storage.session.get(key);
     const template = audit.events.find(e => e.platform === 'Snapchat');
     const action = audit.actions.at(-1);
     audit.events = [10,2,4,1,3].map(n => ({...template,id:`E${n}`,actionId:action.id,action:action.name,
       platform:n === 3 ? 'Meta' : 'Snapchat',pixelId:n === 4 ? 'aaa' : 'zzz'}));
-    await chrome.storage.session.set({audits});
+    await chrome.storage.session.set({[key]: audit});
   }, tabId);
   await panel.locator('#filter').selectOption('');
   await panel.waitForFunction(() => [...document.querySelectorAll('.event')].map(e => e.dataset.eventId).join(',') === 'E3,E4,E1,E2,E10');
@@ -305,6 +304,55 @@ try {
   assert.deepEqual(await panel.locator('.event').evaluateAll(nodes => nodes.map(n => n.dataset.eventId)), ['E3','E4','E1','E2','E10']);
   await panel.locator('#filter').selectOption('Snapchat');
   assert.deepEqual(await panel.locator('.event').evaluateAll(nodes => nodes.map(n => n.dataset.eventId)), ['E4','E1','E2','E10']);
+  // A pixel sent by the site's service worker has no tab; it is attributed to the only
+  // recording tab on that origin. The same tab then pauses at the action limit.
+  await context.route('https://sw-fixture.test/**', route => route.request().url().endsWith('/sw.js')
+    ? route.fulfill({ contentType: 'text/javascript', body: "self.addEventListener('activate', e => e.waitUntil(clients.claim())); self.addEventListener('message', e => e.waitUntil(fetch('https://www.facebook.com/tr/?id=999&ev=Lead', {mode:'no-cors'})));" })
+    : route.fulfill({ contentType: 'text/html', body: '<button>Tap</button>' }));
+  const swSite = await context.newPage();
+  await swSite.goto('https://sw-fixture.test/');
+  const swTabId = await worker.evaluate(async () => (await chrome.tabs.query({})).find(t => t.url?.startsWith('https://sw-fixture.test')).id);
+  await send('start', {tabId:swTabId});
+  await swSite.evaluate(async () => {
+    const registration = await navigator.serviceWorker.register('/sw.js');
+    await navigator.serviceWorker.ready;
+    registration.active.postMessage('fire');
+  });
+  const swKey = `audit:${swTabId}`;
+  await panel.waitForFunction(async key => (await chrome.storage.session.get(key))[key]?.events.some(e => e.status === 204), swKey);
+  const [swEvent] = (await send('get', {tabId:swTabId})).audit.events;
+  assert.deepEqual([swEvent.platform, swEvent.event, swEvent.pixelId, swEvent.viaServiceWorker], ['Meta', 'Lead', '999', true]);
+  const box = await swSite.getByRole('button', {name:'Tap'}).boundingBox();
+  for (let i = 0; i < 260; i++) await swSite.mouse.click(box.x + 5, box.y + 5);
+  await panel.waitForFunction(async key => (await chrome.storage.session.get(key))[key]?.recording === false, swKey);
+  const limited = (await send('get', {tabId:swTabId})).audit;
+  assert.equal(limited.actions.length, 250);
+  assert.match(limited.notice, /250-action limit/);
+  await swSite.close();
+  // Large payloads pause the session before Chrome's session storage quota is exceeded,
+  // and the stored copy records the pause.
+  await context.route('https://quota-fixture.test/**', route => route.fulfill({ contentType: 'text/html', body: '<h1>Quota</h1>' }));
+  const quotaSite = await context.newPage();
+  await quotaSite.goto('https://quota-fixture.test/');
+  const quotaTabId = await worker.evaluate(async () => (await chrome.tabs.query({})).find(t => t.url?.startsWith('https://quota-fixture.test')).id);
+  await send('start', {tabId:quotaTabId});
+  const quotaKey = `audit:${quotaTabId}`;
+  for (let i = 0; i < 40; i++) {
+    await quotaSite.evaluate(async i => {
+      const body = new URLSearchParams({ id: '123', ev: 'Lead', 'cd[blob]': 'x'.repeat(400000), 'cd[n]': String(i) });
+      await fetch('https://www.facebook.com/tr/', { method: 'POST', mode: 'no-cors', body });
+    }, i);
+    if ((await send('get', {tabId:quotaTabId})).audit.recording === false) break;
+  }
+  const full = (await send('get', {tabId:quotaTabId})).audit;
+  assert.equal(full.recording, false);
+  assert.match(full.notice, /storage is nearly full/);
+  await panel.waitForFunction(async key => (await chrome.storage.session.get(key))[key]?.recording === false, quotaKey);
+  const storedFull = (await panel.evaluate(async key => (await chrome.storage.session.get(key))[key], quotaKey));
+  assert.equal(storedFull.events.length, full.events.length);
+  assert.ok(full.events.length > 5 && full.events.length < 40, `captured ${full.events.length} large events`);
+  await quotaSite.close();
+  await panel.waitForFunction(async key => !(await chrome.storage.session.get(key))[key], quotaKey);
   const privacy = await context.newPage();
   await privacy.goto(`chrome-extension://${id}/privacy.html`);
   assert.match(await privacy.locator('body').innerText(), /Limited Use/);

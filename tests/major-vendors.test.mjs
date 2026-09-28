@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeEvents } from './analyze.mjs';
+import { decodeEvents } from '../extension/lib/analyze.mjs';
 
 const one = (url, body = '') => {
   const events = decodeEvents(url, body);
@@ -219,4 +219,29 @@ test('analytics parsers ignore scripts, unrelated requests and malformed batches
     ['https://shop.test/i?e=pv', ''],
     ['https://shop.test/com.snowplowanalytics.snowplow/tp2', '{}'],
   ]) assert.deepEqual(decodeEvents(url, body), []);
+});
+
+test('Pinterest requests without an event name are page visits', () => {
+  assert.equal(one('https://ct.pinterest.com/v3/?tid=123').event, 'pagevisit');
+});
+
+test('Meta Pixel requests through a first-party proxy are recognized by path and parameters', () => {
+  const event = one('https://metrics.shop.test/tr/?id=123456789012345&ev=Purchase&cd[value]=10&cd[currency]=USD');
+  assert.deepEqual([event.platform, event.event, event.pixelId], ['Meta', 'Purchase', '123456789012345']);
+  assert.match(event.classificationNote, /proxy endpoint/);
+  assert.equal(decodeEvents('https://www.facebook.com/tr/?id=123&ev=PageView')[0].classificationNote, undefined);
+  for (const url of [
+    'https://shop.test/tr/?id=abc&ev=PageView',
+    'https://shop.test/tr/?id=123456789012345',
+    'https://shop.test/track/?id=123456789012345&ev=PageView',
+  ]) assert.deepEqual(decodeEvents(url), [], url);
+});
+
+test('Amplitude events through a custom server URL are recognized by their JSON body', () => {
+  const body = JSON.stringify({ api_key: 'amp-key', events: [{ event_type: 'Viewed', device_id: 'd1' }] });
+  const event = one('https://shop.test/amp', body);
+  assert.deepEqual([event.platform, event.event, event.pixelId], ['Amplitude', 'Viewed', 'amp-key']);
+  assert.match(event.classificationNote, /proxy endpoint/);
+  assert.deepEqual(decodeEvents('https://shop.test/amp', JSON.stringify({ api_key: 'k', events: [{ name: 'x' }] })), []);
+  assert.deepEqual(decodeEvents('https://shop.test/amp', JSON.stringify({ api_key: 'k', events: [] })), []);
 });

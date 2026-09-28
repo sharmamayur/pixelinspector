@@ -2,18 +2,18 @@ import meta from './rules/meta.mjs';
 import ga4 from './rules/ga4.mjs';
 import googleAds from './rules/google-ads.mjs';
 import pinterest from './rules/pinterest.mjs';
-import microsoftAds from './rules/microsoft-ads.mjs';
 import payload from './rules/payload.mjs';
 import { sources } from './rules/sources.mjs';
 import { bestPracticeVendors, ruleSettings } from './rule-config.mjs';
 
 export { sources };
+// Reader-facing list of checked vendors, e.g. "Meta, GA4, and Google Ads".
+export const checkedVendors = new Intl.ListFormat('en', { type: 'conjunction' }).format(bestPracticeVendors);
 export const vendorRules = {
   Meta: meta,
   GA4: ga4,
   'Google Ads': googleAds,
   Pinterest: pinterest,
-  'Microsoft Ads': microsoftAds,
 };
 export const sharedRules = payload;
 
@@ -21,7 +21,7 @@ export const sharedRules = payload;
 export function vendorFindings(event, settings = ruleSettings) {
   // Unknown request formats are parser limitations, not implementation defects.
   if (event.platform === 'Google tag') return [];
-  if (event.platform === 'Google Ads' && !/^\d+$/.test(event.pixelId || '')) return [];
+  if (event.platform === 'Google Ads' && !/^(?:AW-)?\d+$/i.test(event.pixelId || '')) return [];
   const findings = [];
   for (const rule of [...(vendorRules[event.platform] || []), ...sharedRules]) {
     const setting = settings[rule.id] || {};
@@ -34,7 +34,7 @@ export function vendorFindings(event, settings = ruleSettings) {
       code: rule.id,
       severity,
       platform: event.platform,
-      action: event.action || event.step,
+      action: event.action,
       evidence: [event.id],
       text: `${event.platform} ${event.event}: ${result.text}`,
       fix: result.fix,

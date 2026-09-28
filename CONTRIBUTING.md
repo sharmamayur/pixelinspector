@@ -32,7 +32,7 @@ Load the `extension` directory as an unpacked extension in Chrome. There is no c
 - `extension/observer.js`: page navigation and interaction capture.
 - `extension/panel.*`: side-panel interface and exports.
 - `extension/lib/`: shared request parsers and report generation.
-- `scripts/audit/`: command-line audit tools and tests; `analyze.mjs` re-exports the extension's shared implementation.
+- `tests/`: parser and rule tests (`*.test.mjs`) and the Chromium extension smoke test.
 
 ## Submit a pull request
 
@@ -40,11 +40,11 @@ Keep each pull request focused on one change. Explain the problem, resulting beh
 
 For vendor checks, cite the official documentation, distinguish required fields from conditional recommendations, and include examples that must not be flagged. Do not infer account configuration or server-side behavior from missing browser fields.
 
-For parser changes, add synthetic request fixtures and assertions to the appropriate `scripts/audit/*.test.mjs` file. Cover both recognized requests and nearby formats that should be ignored. Never add real customer payloads to tests.
+For parser changes, add synthetic request fixtures and assertions to the appropriate `tests/*.test.mjs` file. Cover both recognized requests and nearby formats that should be ignored. Never add real customer payloads to tests.
 
 Run `pnpm test`. For capture or interface changes, also run `pnpm test:browser` and check the unpacked extension in Chrome. Browser checks use Playwright Chromium; no live customer website is required.
 
-Generated ZIPs, local audit reports, and browser profiles do not belong in pull requests. Maintainers handle official version changes and store submissions.
+Generated ZIPs, exported reports, and browser profiles do not belong in pull requests. Maintainers handle official version changes and store submissions. The version lives only in `extension/manifest.json`.
 
 ## License
 
@@ -65,4 +65,4 @@ export const ruleSettings = {
 };
 ```
 
-Unlisted rules keep their defaults. Supported severities are `error` and `warning`. Disabling or overriding a rule applies to the audit analyzer and the extension's checks. `bestPracticeVendors` controls the best-practice UI/export coverage; it does not disable the audit analyzer's other vendor checks. All configuration ships with the extension and requires a reload or updated distribution to take effect.
+Unlisted rules keep their defaults. Supported severities are `error` and `warning`. Disabling or overriding a rule applies to the extension's checks and exports. Rules run only for vendors listed in `bestPracticeVendors`; rules registered for other vendors are inactive until their vendor is added. All configuration ships with the extension and requires a reload or updated distribution to take effect.

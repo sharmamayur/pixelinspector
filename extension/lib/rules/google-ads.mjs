@@ -7,7 +7,8 @@ export default [
     severity: 'warning',
     source: sources['Google Ads'],
     evaluate(event) {
-      if (event.event === 'conversion' && present(event.value) && !present(event.currency)) return { text: 'A conversion value is sent without an explicit currency.', fix: 'Verify the conversion action currency/defaults, or send currency explicitly.' };
+      // Legacy conversion requests are named 'conversion'; /ccm/collect uses the tag's event name.
+      if (event.event !== 'remarketing' && present(event.value) && !present(event.currency)) return { text: 'A conversion value is sent without an explicit currency.', fix: 'Verify the conversion action currency/defaults, or send currency explicitly.' };
       return null;
     },
   },
