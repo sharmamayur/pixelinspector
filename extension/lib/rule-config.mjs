@@ -1,6 +1,6 @@
-// Controls which vendors appear in the extension's best-practice UI and exports.
-// The audit analyzer still runs all registered vendor rules.
-export const bestPracticeVendors = ['Meta', 'GA4'];
+// Vendors whose rules run, in the extension and the command-line audit tool.
+// Rules registered for other vendors in vendor-rules.mjs are inactive.
+export const bestPracticeVendors = ['Meta', 'GA4', 'Google Ads', 'Pinterest', 'Microsoft Ads'];
 
 // Optional settings keyed by rule ID. Omitted rules use their own defaults.
 // Example: 'ga4.purchase_value': { enabled: false }

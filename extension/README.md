@@ -32,22 +32,21 @@ It records request outcomes and payload fields as evidence without labeling the 
 
 Automatic capture records clicks, product URL patterns (`/product/`, `/products/`, `/p/`), product metadata, ordinary page navigation, and URL-changing single-page navigation. Forms are labeled as submitted without assuming a purchase or lead succeeded. Other languages and unusual controls appear as generic clicks; embedded frames may be missed.
 
-## Delivery and journey notes
-
-Notes appear under an action when a recognized request after it failed in the browser or returned HTTP 400 or higher, or when a vendor seen elsewhere in the session sent no matching page-view, product-view, add-to-cart, or checkout event within 8 seconds of that action. Missing-event notes are inferred from browsing, not from the site's configuration; consent, custom event names, or server-side tracking can explain them. Notes cover every recognized vendor and follow the vendor filter. HTML and plain-text exports include them; JSON stores them under `journeyFindings`.
-
 ## Vendor best-practice checks
 
-The panel flags observed **Meta and GA4** payload issues and recommendations. Open a flagged event for the finding, suggested fix, vendor reference, and original payload. HTML, JSON, and plain-text exports include these checks; JSON stores them under `bestPractices`.
+The panel flags observed **Meta, GA4, Google Ads, Pinterest, and Microsoft Ads** payload issues and recommendations. Open a flagged event for the finding, suggested fix, vendor reference, and original payload. HTML, JSON, and plain-text exports include these checks; JSON stores them under `bestPractices`.
 
 - **Meta:** pixel ID format, standard-event capitalization, missing Purchase value/currency, and numeric value/currency format.
 - **GA4:** measurement ID format, event-name characters and length, ecommerce-event capitalization, purchase transaction ID, item presence and identity, currency when value is sent, purchase value, and value/currency format.
+- **Google Ads:** currency when a conversion sends a value (remarketing requests are exempt), and value/currency format.
+- **Pinterest:** currency and product ID on `checkout` and `addtocart` events, and value/currency format.
+- **Microsoft Ads:** value/currency format.
 
 **Payload issue** means a recognized request failed a field or format check. **Recommendation** means it needs review in the context of your reporting goals or payload encoding. Checks run when a request is captured; HTTP 200 does not prove the payload is correct.
 
 These are limited request-level checks, not a complete vendor audit. They do not establish action causation, catalog matching, account settings, consent compliance, server-side delivery, CAPI deduplication, or vendor receipt. Other vendors are still captured but are not covered by this feature. No findings does not mean the implementation is correct.
 
-References: [Meta Pixel](https://developers.facebook.com/docs/meta-pixel/reference/), [GA4 events](https://developers.google.com/analytics/devguides/collection/ga4/reference/events), [GA4 event names](https://support.google.com/analytics/answer/13316687), and [GA4 collection limits](https://support.google.com/analytics/answer/9267744).
+References: [Meta Pixel](https://developers.facebook.com/docs/meta-pixel/reference/), [GA4 events](https://developers.google.com/analytics/devguides/collection/ga4/reference/events), [GA4 event names](https://support.google.com/analytics/answer/13316687), and [GA4 collection limits](https://support.google.com/analytics/answer/9267744), [Google Ads conversion values](https://support.google.com/google-ads/answer/6095947), [Pinterest event codes](https://help.pinterest.com/en/business/article/add-event-codes), and [Microsoft Advertising UET](https://learn.microsoft.com/en-us/advertising/guides/universal-event-tracking?view=bingads-13).
 
 ## Privacy and limits
 

@@ -1,4 +1,3 @@
-import { actionLabels } from './lib/automatic.mjs';
 import { decodeEvents, limitations } from './lib/analyze.mjs';
 
 // Serialize reads and writes, including after a service worker restart.
@@ -8,6 +7,7 @@ function enqueue(work) {
   queue = result.catch(error => console.error('PixelMonitor:', error));
   return result;
 }
+const actionLabels = { page: 'Page viewed', product: 'Product viewed', click: 'Element clicked', cart: 'Add to cart clicked', checkout: 'Checkout clicked', form: 'Form submitted' };
 const now = () => new Date().toISOString();
 // Mirror of which tabs have a session (value: recording), so requests from other tabs skip
 // the queue and storage. Null until storage is first read, e.g. after a worker restart.
@@ -131,7 +131,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         return null;
       }
       finishAction(audit);
-      audit.actions.push({ id: `A${audit.actions.length + 1}`, name: actionName(message, replay), action: message.action, automatic: true, startedAt: now(), expect: [], replay });
+      audit.actions.push({ id: `A${audit.actions.length + 1}`, name: actionName(message, replay), action: message.action, startedAt: now(), replay });
       await save(audit);
       return null;
     }
@@ -143,7 +143,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Open a regular website tab first.');
       const startedAt = now();
       const replay = { type: 'goto', url: `${url.origin}${url.pathname}` };
-      audit = { tabId, site: url.origin, browser: navigator.userAgent, startedAt, consent: 'Not recorded', recording: true, actions: [{ id: 'A1', name: actionName({ action: 'page' }, replay, { initial: true }), action: 'page', automatic: true, startedAt, expect: [], replay }], events: [], limitations };
+      audit = { tabId, site: url.origin, browser: navigator.userAgent, startedAt, consent: 'Not recorded', recording: true, actions: [{ id: 'A1', name: actionName({ action: 'page' }, replay, { initial: true }), action: 'page', startedAt, replay }], events: [], limitations };
     } else if (message.type === 'clear') {
       await remove(tabId);
       await chrome.tabs.sendMessage(tabId, { type: 'observe-stop' }).catch(() => {});

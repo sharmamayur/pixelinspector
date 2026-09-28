@@ -184,14 +184,12 @@ try {
   assert.ok(Array.isArray(exportedAudit.actions));
   assert.equal(exportedAudit.steps, undefined);
   assert.equal(exportedAudit.findings, undefined);
-  assert.ok(Array.isArray(exportedAudit.journeyFindings));
   assert.equal(exportedAudit.bestPractices.length, 2);
   assert.ok(exportedAudit.bestPractices.every(f => f.eventId === 'E3'));
   const htmlDownloadPromise = panel.waitForEvent('download');
   await panel.locator('#html').click();
   const htmlDownload = await htmlDownloadPromise;
   assert.match(await readFile(await htmlDownload.path(), 'utf8'), /Vendor best-practice checks/);
-  assert.match(await readFile(await htmlDownload.path(), 'utf8'), /Delivery and journey notes/);
   const summaryDownloadPromise = panel.waitForEvent('download');
   await panel.locator('#summary').click();
   const summaryDownload = await summaryDownloadPromise;
@@ -289,15 +287,6 @@ try {
     assert.equal(await panel.locator('.event').count(), 2);
     assert.match(await panel.locator('#journey').innerText(), new RegExp(destination));
   }
-  // Rejected pixels appear as delivery notes on their action and in exports.
-  await context.route(url => url.hostname === 'www.facebook.com' && url.searchParams.get('id') === '500', route => route.fulfill({status:500,body:''}));
-  await website.evaluate(() => { const image = new Image(); image.src='https://www.facebook.com/tr/?id=500&ev=Lead'; });
-  await panel.locator('#filter').selectOption('');
-  await panel.waitForSelector('.action-notes .check-finding');
-  assert.match(await panel.locator('.action-notes').innerText(), /Delivery[\s\S]*Meta Lead request to destination 500 returned HTTP 500/);
-  await panel.locator('#filter').selectOption('Snapchat');
-  assert.equal(await panel.locator('.action-notes').count(), 0);
-  await panel.locator('#filter').selectOption('');
   // Scramble storage order to verify numeric E-ID ordering inside each
   // existing vendor/pixel group, including E2 versus E10.
   await send('stop');

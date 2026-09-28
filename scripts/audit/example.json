@@ -4,8 +4,7 @@
     {
       "name": "Landing page",
       "action": "goto",
-      "waitMs": 5000,
-      "expect": [{ "platform": "GA4", "event": "page_view" }]
+      "waitMs": 5000
     }
   ]
 }

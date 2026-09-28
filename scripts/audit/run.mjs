@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { decodeEvents, analyze, journeyFindings, reportHtml, sessionSummary, limitations } from './analyze.mjs';
+import { decodeEvents, reportHtml, sessionSummary, limitations } from './analyze.mjs';
 
 const args = process.argv.slice(2);
 if (!args[0] || args.includes('--help')) {
@@ -20,7 +20,7 @@ const out = resolve(option('--out') || `audit-output/${url.hostname}-${Date.now(
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: args.includes('--headless'), ...(option('--channel') ? { channel: option('--channel') } : {}) });
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-const report = { site: url.origin, startedAt: new Date().toISOString(), browser: `Chromium ${browser.version()}`, consent: config?.consent || 'Not recorded', limitations, steps: [], events: [], findings: [] };
+const report = { site: url.origin, startedAt: new Date().toISOString(), browser: `Chromium ${browser.version()}`, consent: config?.consent || 'Not recorded', limitations, steps: [], events: [] };
 let currentStep;
 const requests = new Map();
 context.on('request', request => {
@@ -36,7 +36,7 @@ const page = await context.newPage();
 page.setDefaultTimeout(15000);
 const terminal = config ? null : createInterface({ input: process.stdin, output: process.stdout });
 async function stepRun(step, action) {
-  currentStep = { name: step.name, expect: step.expect || [], startedAt: new Date().toISOString() };
+  currentStep = { name: step.name, startedAt: new Date().toISOString() };
   report.steps.push(currentStep);
   try {
     await action();
@@ -80,12 +80,10 @@ try {
 } finally {
   terminal?.close();
   await browser.close();
-  report.findings = analyze(report.steps, report.events);
-  report.journeyFindings = journeyFindings(report.steps, report.events);
   report.bestPractices = bestPracticeFindings(report.events);
   await writeFile(resolve(out, 'report.json'), JSON.stringify(report, null, 2));
   await writeFile(resolve(out, 'report.html'), reportHtml(report));
   await writeFile(resolve(out, 'summary.txt'), sessionSummary(report));
-  console.log(`Saved ${report.events.length} events and ${report.findings.length} potential findings to ${out}`);
+  console.log(`Saved ${report.events.length} events and ${report.bestPractices.length} best-practice findings to ${out}`);
 }
 if (report.steps.some(s => s.error)) process.exitCode = 1;

@@ -65,4 +65,4 @@ export const ruleSettings = {
 };
 ```
 
-Unlisted rules keep their defaults. Supported severities are `error` and `warning`. Disabling or overriding a rule applies to the audit analyzer and the extension's checks. `bestPracticeVendors` controls the best-practice UI/export coverage; it does not disable the audit analyzer's other vendor checks. All configuration ships with the extension and requires a reload or updated distribution to take effect.
+Unlisted rules keep their defaults. Supported severities are `error` and `warning`. Disabling or overriding a rule applies to the extension and the command-line audit tool. Rules run only for vendors listed in `bestPracticeVendors`; rules registered for other vendors are inactive until their vendor is added. All configuration ships with the extension and requires a reload or updated distribution to take effect.

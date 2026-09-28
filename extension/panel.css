@@ -13,4 +13,3 @@ main{padding:14px}.card{background:#fff;border:1px solid var(--line);border-radi
 .field-standard .field-indicator{background:#2563eb}
 
 .field-required-label{font-size:9px;font-weight:600;color:#475569;margin-left:5px}.field-standard.field-missing .field-indicator{background:#dc2626}
-.action-notes{margin-top:6px}.action-notes .check-finding{margin:5px 0;padding:6px 8px}.action-notes .check-finding p{margin:3px 0 0;font-size:10px;line-height:1.45}

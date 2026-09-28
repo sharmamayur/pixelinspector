@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-import { decodeEvents, analyze } from './analyze.mjs';
+import { decodeEvents } from './analyze.mjs';
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 try {
   const context = await browser.newContext();
@@ -13,6 +13,5 @@ try {
   await page.getByRole('button', { name: 'Add to cart' }).click();
   await page.waitForTimeout(500);
   assert.equal(events[0].event, 'AddToCart');
-  assert.equal(analyze([{ name: 'cart', expect: [{ platform: 'Meta', event: 'AddToCart' }] }], events.map(e => ({ ...e, step: 'cart' }))).length, 0);
-  console.log('Browser smoke test passed: click → request capture → analysis. All traffic mocked.');
+  console.log('Browser smoke test passed: click → request capture → decoding. All traffic mocked.');
 } finally { await browser.close(); }
