@@ -1,8 +1,8 @@
-import { bestPracticeFindings, vendorFindings } from '../../extension/lib/vendor-rules.mjs';
+import { bestPracticeFindings, vendorFindings } from '../extension/lib/vendor-rules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeEvents, reportHtml } from './analyze.mjs';
-const inspect = (url, body = '') => decodeEvents(url,body).flatMap((event,i)=>vendorFindings({...event,step:'test',id:`E${i+1}`}));
+import { decodeEvents, reportHtml } from '../extension/lib/analyze.mjs';
+const inspect = (url, body = '') => decodeEvents(url,body).flatMap((event,i)=>vendorFindings({...event,id:`E${i+1}`}));
 const codes = findings => findings.map(f=>f.code);
 test('Meta Purchase requires value/currency but AddToCart and custom events do not', () => {
   assert.ok(codes(inspect('https://www.facebook.com/tr/?id=123&ev=Purchase')).includes('meta.purchase_fields'));
@@ -13,13 +13,13 @@ test('payload fields split required schema from website-supplied fields', () => 
   assert.deepEqual(meta.requiredFields.map(field => [field.name,field.present]), [['Pixel ID',true],['Event name',true],['value',true],['currency',true]]);
   assert.deepEqual(meta.standardFields.map(f => f.name), ['cd[value]', 'cd[currency]', 'cd[content_category]']);
   assert.deepEqual(meta.customFields, [
-    {name:'cd[email]',value:'Present (value not retained)'},
+    {name:'cd[email]',value:'person@example.com'},
   ]);
   assert.ok(meta.payloadFields.some(field => field.name === 'cd[content_category]' && field.value === 'Shoes'));
   assert.equal(meta.payloadFields.find(field => field.name === 'cd[email]').value, 'person@example.com');
 
   const [ga4] = decodeEvents('https://www.google-analytics.com/g/collect?tid=G-123&en=purchase&ep.transaction_id=ORDER-PRIVATE&epn.value=20&ep.currency=USD&pr1=idSKU~nmShoe&ep.coupon=SPRING');
-  assert.equal(ga4.requiredFields.find(field => field.name === 'transaction_id').value, 'Present (value not retained)');
+  assert.equal(ga4.requiredFields.find(field => field.name === 'transaction_id').value, 'ORDER-PRIVATE');
   assert.equal(ga4.requiredFields.find(field => field.name === 'items').value, '1 item');
   assert.ok(ga4.customFields.some(field => field.name === 'ep.coupon' && field.value === 'SPRING'));
   assert.equal(ga4.payloadFields.find(field => field.name === 'ep.transaction_id').value, 'ORDER-PRIVATE');
@@ -61,7 +61,7 @@ test('Google Ads remarketing is not a mislabeled conversion; defaults are allowe
 test('reports include request-level vendor checks with evidence and references', () => {
   const findings=inspect('https://www.facebook.com/tr/?id=123&ev=Purchase');
   const events=decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase');
-  const html=reportHtml({site:'test',startedAt:'2026-01-01',browser:'test',consent:'test',steps:[],events,findings});
+  const html=reportHtml({site:'test',startedAt:'2026-01-01',browser:'test',actions:[],events,findings});
   assert.match(html,/Observed browser requests/);
   assert.match(html,/Vendor best-practice checks/);
   assert.match(html,/Vendor documentation/);
@@ -88,7 +88,7 @@ test('unrecognized Google destination formats are neutral, not malformed-ID erro
 });
 test('unknown IDs in older Google Ads records do not generate setup errors', () => {
   for (const pixelId of ['unknown', 'G-4WL8DDJFSY']) {
-    const findings = vendorFindings({platform:'Google Ads', event:'remarketing', pixelId, step:'test', id:'E1'});
+    const findings = vendorFindings({platform:'Google Ads', event:'remarketing', pixelId,  id:'E1'});
     assert.equal(findings.length, 0);
   }
 });

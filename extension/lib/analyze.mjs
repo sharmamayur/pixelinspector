@@ -12,7 +12,6 @@ export function decodeEvents(rawUrl, body = '') {
   const floodlightHost = /(^|\.)(google\.com|doubleclick\.net)$/.test(url.hostname);
   if (floodlightHost && floodlightPath) {
     const fields = new URLSearchParams(floodlightPath[2].replace(/;/g, '&'));
-    // Retain configuration metadata only; omit user IDs, referrers, consent strings and ord.
     const src = fields.get('src');
     const group = fields.get('type');
     const activity = fields.get('cat');
@@ -36,7 +35,10 @@ export function decodeEvents(rawUrl, body = '') {
   if (body && !body.trim().startsWith('{')) {
     for (const [key, value] of new URLSearchParams(body.split('\n')[0])) initialParams.set(key, value);
   }
-  const meta = url.hostname === 'www.facebook.com' && /^\/tr\/?$/.test(url.pathname);
+  // First-party proxies keep the Pixel's /tr path and parameters: a numeric pixel ID and an event.
+  const officialMeta = url.hostname === 'www.facebook.com' && /^\/tr\/?$/.test(url.pathname);
+  const proxiedMeta = !officialMeta && /(?:^|\/)tr\/?$/.test(url.pathname) && /^\d{10,20}$/.test(initialParams.get('id') || '') && Boolean(initialParams.get('ev'));
+  const meta = officialMeta || proxiedMeta;
   const officialGaHost = /(^|\.)(google-analytics\.com|analytics\.google\.com)$/.test(url.hostname);
   const ga = /\/g\/collect\/?$/.test(url.pathname) && (officialGaHost || /^G-[A-Z0-9]+$/i.test(initialParams.get('tid') || ''));
   const googleHost = /(^|\.)(googleadservices\.com|google\.com|doubleclick\.net)$/.test(url.hostname);
@@ -80,7 +82,7 @@ export function decodeEvents(rawUrl, body = '') {
     ] : ga ? [
       requiredField('Measurement ID', params.get('tid'), 'Identifies the GA4 web data stream.'),
       requiredField('Event name', params.get('en'), 'Identifies the event sent to GA4.'),
-      ...(event === 'purchase' ? [requiredField('transaction_id', transactionId, 'Required for GA4 purchase deduplication.', { hide: true })] : []),
+      ...(event === 'purchase' ? [requiredField('transaction_id', transactionId, 'Required for GA4 purchase deduplication.')] : []),
       ...(gaItemEvents.has(event) ? [requiredField('items', items.length ? `${items.length} item${items.length === 1 ? '' : 's'}` : null, `Required for the recommended GA4 ${event} event.`)] : []),
       ...(gaValue != null ? [requiredField('currency', params.get('cu') ?? params.get('ep.currency'), 'Required when a GA4 event includes value.')] : []),
     ] : adsRecognized ? [
@@ -99,6 +101,7 @@ export function decodeEvents(rawUrl, body = '') {
     return {
       platform: meta ? 'Meta' : ga ? 'GA4' : adsRecognized ? 'Google Ads' : 'Google tag',
       ...(ads && !adsRecognized ? { classificationNote: 'Google request format not recognized. No vendor setup checks applied.' } : {}),
+      ...(proxiedMeta ? { classificationNote: 'Meta Pixel request sent to a first-party or proxy endpoint instead of facebook.com.' } : {}),
       event: event.slice(0, 120),
       ...(meta ? { eventType: metaEventType(event), standardFields: customFields([...params].filter(([key]) => isMetaStandardField(key))) } : {}),
       pixelId: ((meta ? params.get('id') : ga ? params.get('tid') : adsRecognized ? adsId : null) || 'unknown').slice(0, 100),
@@ -138,17 +141,13 @@ export function reportHtml(report) {
     const full = (event.payloadFields || []).map(field => `${esc(field.name)}: ${esc(field.value)}`).join('<br>') || 'None retained';
     return `${event.platform === 'Meta' ? `<b>Standard</b><br>${standard}` : `<b>Required</b><br>${required}`}<br><br><b>Custom</b><br>${custom}<br><br><b>Full payload</b><br>${full}`;
   };
-  const recorded = report.actions || report.steps || [];
-  const actions = recorded.filter(action => action.replay);
-  const timeline = actions.length ? actions : recorded;
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>PixelMonitor pixel inspection</title><style>body{font:16px/1.6 system-ui;max-width:1200px;margin:48px auto;padding:0 24px;color:#172033}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;vertical-align:top;border-bottom:1px solid #ddd;padding:10px}aside{background:#eff6ff;padding:16px}img{max-width:100%;border:1px solid #ddd}small{color:#526078}</style><h1>PixelMonitor pixel inspection</h1><p>${esc(report.site)} · ${esc(report.startedAt)}</p><p>Browser: ${esc(report.browser)} · Consent: ${esc(report.consent)}</p><aside>${esc(limitations)}</aside><h2>Visitor journey</h2><ol>${timeline.map(action => `<li><b>${esc(action.name.replace(/^\d+\.\s*/, ''))}</b> — ${esc(action.error || 'Completed')}<br><small>${esc(action.startedAt)} to ${esc(action.endedAt)}</small>${action.screenshot ? `<br><a href="${esc(action.screenshot)}">View action screenshot</a>` : ''}</li>`).join('')}</ol>${checkHtml}<h2>Observed browser requests</h2><table><tr><th>Evidence</th><th>After action / time</th><th>Platform / event</th><th>Pixel ID</th><th>Payload fields</th><th>HTTP</th></tr>${report.events.map(e => `<tr><td>${esc(e.id)}</td><td>${esc(e.action || e.step)}<br>${esc(e.at)}</td><td>${esc(e.platform)} / ${esc(e.event)}${e.platform === 'Meta' ? `<br>${metaEventType(e.event) === 'standard' ? 'Standard event' : 'Custom event'}` : ''}</td><td>${esc(e.pixelId)}</td><td>${payloadHtml(e)}</td><td>${esc(e.failed ? failureLabel(e.failureReason) : e.status || 'Unconfirmed')}</td></tr>`).join('')}</table>`;
+  const timeline = (report.actions || []).filter(action => action.replay);
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>PixelMonitor pixel inspection</title><style>body{font:16px/1.6 system-ui;max-width:1200px;margin:48px auto;padding:0 24px;color:#172033}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;vertical-align:top;border-bottom:1px solid #ddd;padding:10px}aside{background:#eff6ff;padding:16px}img{max-width:100%;border:1px solid #ddd}small{color:#526078}</style><h1>PixelMonitor pixel inspection</h1><p>${esc(report.site)} · ${esc(report.startedAt)}</p><p>Browser: ${esc(report.browser)}</p><aside>${esc(limitations)}</aside><h2>Visitor journey</h2><ol>${timeline.map(action => `<li><b>${esc(action.name)}</b><br><small>${esc(action.startedAt)} to ${esc(action.endedAt)}</small></li>`).join('')}</ol>${checkHtml}<h2>Observed browser requests</h2><table><tr><th>Evidence</th><th>After action / time</th><th>Platform / event</th><th>Pixel ID</th><th>Payload fields</th><th>HTTP</th></tr>${report.events.map(e => `<tr><td>${esc(e.id)}</td><td>${esc(e.action)}<br>${esc(e.at)}</td><td>${esc(e.platform)} / ${esc(e.event)}${e.platform === 'Meta' ? `<br>${metaEventType(e.event) === 'standard' ? 'Standard event' : 'Custom event'}` : ''}</td><td>${esc(e.pixelId)}</td><td>${payloadHtml(e)}</td><td>${esc(e.failed ? failureLabel(e.failureReason) : e.status || 'Unconfirmed')}${e.viaServiceWorker ? '<br>via service worker' : ''}</td></tr>`).join('')}</table>`;
 }
 export function sessionSummary(report) {
   const observed = [...new Set(report.events.map(e => `${e.platform} ${e.event}`))].join(', ');
-  const recorded = report.actions || report.steps || [];
-  const actions = recorded.filter(action => action.replay && !action.error);
-  const timeline = (actions.length ? actions : recorded.filter(action => !action.error)).map(action => action.name.replace(/^\d+\.\s*/, '')).join(' → ');
+  const timeline = (report.actions || []).filter(action => action.replay).map(action => action.name).join(' → ');
   const checks = bestPracticeFindings(report.events);
   const checkText = checks.map(f => `${f.category} · ${f.eventId || 'Event'} · Destination ${f.pixelId}: ${f.text}\nSuggested fix: ${f.fix}\nReference: ${f.source}`).join('\n\n');
-  return `Pixel tracking summary: ${report.site}\n\nCaptured: ${report.startedAt}\nConsent setting: ${report.consent}\n\nVisitor journey: ${timeline || 'No actions recorded'}.\n${observed ? `Observed browser events: ${observed}.` : 'No events recognized by PixelMonitor were observed during this session.'}\n\nThis capture shows browser requests only; server-side tracking and vendor processing are not visible here.\n\nVendor best-practice checks (${checkedVendors} payloads):\n${checkText || "No issues found by the available checks; other vendors are not checked."}\nNo flags is not a complete implementation audit. Recommendations may depend on reporting goals.\n`;
+  return `Pixel tracking summary: ${report.site}\n\nCaptured: ${report.startedAt}\n\nVisitor journey: ${timeline || 'No actions recorded'}.\n${observed ? `Observed browser events: ${observed}.` : 'No events recognized by PixelMonitor were observed during this session.'}\n\nThis capture shows browser requests only; server-side tracking and vendor processing are not visible here.\n\nVendor best-practice checks (${checkedVendors} payloads):\n${checkText || "No issues found by the available checks; other vendors are not checked."}\nNo flags is not a complete implementation audit. Recommendations may depend on reporting goals.\n`;
 }

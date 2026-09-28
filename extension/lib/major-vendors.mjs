@@ -76,8 +76,12 @@ export function decodeMajorVendor(url, body = '') {
   const params = formParams(url, body);
   const json = jsonBody(body);
 
-  if (['api.amplitude.com', 'api2.amplitude.com', 'api.eu.amplitude.com'].includes(host)
-      && /^\/(?:2\/httpapi|batch|httpapi)\/?$/.test(path)) {
+  const officialAmplitude = ['api.amplitude.com', 'api2.amplitude.com', 'api.eu.amplitude.com'].includes(host)
+      && /^\/(?:2\/httpapi|batch|httpapi)\/?$/.test(path);
+  // Proxied SDK traffic (a custom serverUrl) is recognized by its JSON body: an API key and typed events.
+  const proxiedAmplitude = !officialAmplitude && typeof json?.api_key === 'string' && Array.isArray(json.events)
+      && json.events.length > 0 && json.events.every(entry => typeof entry?.event_type === 'string');
+  if (officialAmplitude || proxiedAmplitude) {
     const events = json?.events ?? jsonBody(params.get('e'));
     const key = first(json?.api_key, params.get('api_key'), params.get('client'));
     if (!Array.isArray(events)) return [];
@@ -87,6 +91,7 @@ export function decodeMajorVendor(url, body = '') {
         value: entry.revenue, currency: entry.event_properties?.currency,
         customFields: customFields(flattenFields(entry.event_properties || {})),
         payloadEntries: [['api_key', key], ...flattenFields(entry)],
+        ...(proxiedAmplitude ? { classificationNote: 'Amplitude events sent to a first-party or proxy endpoint instead of amplitude.com.' } : {}),
       })];
     });
   }

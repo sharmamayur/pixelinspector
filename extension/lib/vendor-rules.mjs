@@ -34,7 +34,7 @@ export function vendorFindings(event, settings = ruleSettings) {
       code: rule.id,
       severity,
       platform: event.platform,
-      action: event.action || event.step,
+      action: event.action,
       evidence: [event.id],
       text: `${event.platform} ${event.event}: ${result.text}`,
       fix: result.fix,

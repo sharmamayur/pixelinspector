@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeEvents, failureLabel, reportHtml } from './analyze.mjs';
+import { decodeEvents, failureLabel, reportHtml } from '../extension/lib/analyze.mjs';
 test('Meta event parsing retains the complete request payload', () => {
   const events = decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase&cd[value]=0&cd[currency]=USD&ud[email]=secret&dl=https://store.test/private');
   assert.equal(events[0].value, '0');
@@ -23,11 +23,11 @@ test('browser failures are labeled by their Chrome reason', () => {
   assert.equal(failureLabel('net::ERR_BLOCKED_BY_CLIENT'), 'Blocked by the browser or an extension');
   assert.equal(failureLabel('net::ERR_ABORTED'), 'Canceled by the browser');
   assert.equal(failureLabel('net::ERR_TIMED_OUT'), 'Browser network failure (net::ERR_TIMED_OUT)');
-  const html = reportHtml({site:'test',steps:[],events:[{id:'E1',platform:'Meta',event:'Lead',pixelId:'123',failed:true,failureReason:'net::ERR_BLOCKED_BY_CLIENT'}]});
+  const html = reportHtml({site:'test',actions:[],events:[{id:'E1',platform:'Meta',event:'Lead',pixelId:'123',failed:true,failureReason:'net::ERR_BLOCKED_BY_CLIENT'}]});
   assert.match(html,/Blocked by the browser or an extension/);
 });
 test('report escapes website-controlled content', () => {
-  const html = reportHtml({site:'<script>alert(1)</script>',steps:[],events:[]});
+  const html = reportHtml({site:'<script>alert(1)</script>',actions:[],events:[]});
   assert.ok(!html.includes('<script>'));
 });
 

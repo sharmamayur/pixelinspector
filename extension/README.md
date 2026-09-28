@@ -20,17 +20,19 @@ First [download or clone the repository](../README.md#install-from-source). You 
 5. Browse events by vendor and pixel ID. Open an event to inspect one payload field list. Badges distinguish vendor-required fields, website-specific custom fields, and other fields sent with the request.
 6. Wait for delayed events, then click **Pause** when you want to stop capturing. Click **Resume** to continue the same session.
 
-Each browser tab has its own session. A session follows its tab through reloads and navigation, including cross-domain navigation, and continues when you switch tabs. While the panel is open, switching to another website tab starts its inspection automatically. Clear deletes the captured results and immediately starts a fresh recording. Use Pause to stop capture. Closing a tab deletes its session. Closing and reopening the side panel does not stop inspection. Each tab stops at 1,000 events.
+Each browser tab has its own session. A session follows its tab through reloads and navigation, including cross-domain navigation, and continues when you switch tabs. While the panel is open, switching to another website tab starts its inspection automatically. Clear deletes the captured results and immediately starts a fresh recording. Use Pause to stop capture. Closing a tab deletes its session. Closing and reopening the side panel does not stop inspection. A tab's session pauses, with a notice, at 1,000 events or 250 recorded actions, or when all sessions together approach Chrome's 10 MB extension session storage limit. Very large payloads reach the storage limit sooner.
 
 ## What PixelMonitor recognizes
 
 PixelMonitor recognizes browser requests from Meta, GA4, Google Ads, Google Floodlight, TikTok, Pinterest, LinkedIn, Snapchat, Microsoft Ads, Reddit Ads, X Ads, Adobe Analytics, Criteo, Taboola, Outbrain, Snowplow, and Amplitude. Script loads alone do not count as fired events.
 
-Amplitude supports US/EU HTTP API and batch requests, grouped by project API key. Snowplow supports tracker GET requests and JSON batches on first-party collectors, grouped by app ID (or collector hostname when absent), including decoded self-describing events.
+Meta Pixel requests sent through a first-party proxy are recognized when they keep the Pixel's `/tr` path, numeric pixel ID, and event parameter. Amplitude supports US/EU HTTP API and batch requests, and SDK requests sent to a custom server URL, grouped by project API key. Snowplow supports tracker GET requests and JSON batches on first-party collectors, grouped by app ID (or collector hostname when absent), including decoded self-describing events.
 
 It records request outcomes and payload fields as evidence without labeling the site healthy or broken. Repeated events remain visible without assuming they are erroneous duplicates. Existing cookies, consent choices, ad blockers, and browser settings can affect what appears.
 
 Automatic capture records clicks, product URL patterns (`/product/`, `/products/`, `/p/`), product metadata, ordinary page navigation, and URL-changing single-page navigation. Forms are labeled as submitted without assuming a purchase or lead succeeded. Other languages and unusual controls appear as generic clicks; embedded frames may be missed.
+
+Pixels sent by a website's service worker have no tab of their own. They are attributed to a recording tab only when exactly one recording tab is on that website's origin, and are marked "via service worker".
 
 ## Vendor best-practice checks
 
@@ -70,7 +72,7 @@ For a cloned repository, run `git pull --ff-only` from its folder when your chec
 - **No events appear:** open the panel before refreshing the website. Confirm recording is active, and check consent choices, ad blockers, and Chrome's site-access settings. Only supported request formats appear; script downloads alone do not count.
 - **The panel does not inspect a page:** use an ordinary HTTP(S) website. Chrome restricts extensions on browser-internal pages and other protected pages.
 - **Changes to the source do not appear:** reload the extension, then refresh the inspected tab.
-- **Recording stops at 1,000 events:** export the paused session if needed, then use **Clear** to start a new one.
+- **Recording stops at 1,000 events, 250 actions, or the storage limit:** export the paused session if needed, then use **Clear** to start a new one.
 
 For bugs or feature requests, use [GitHub Issues](https://github.com/sharmamayur/pixelinspector/issues). Remove personal data from screenshots and reports before posting them. Send sensitive reports to [mayur@pixelmonitor.app](mailto:mayur@pixelmonitor.app).
 

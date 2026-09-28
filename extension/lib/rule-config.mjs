@@ -1,4 +1,4 @@
-// Vendors whose rules run, in the extension and the command-line audit tool.
+// Vendors whose best-practice rules run.
 // Rules registered for other vendors in vendor-rules.mjs are inactive.
 export const bestPracticeVendors = ['Meta', 'GA4', 'Google Ads', 'Pinterest', 'Microsoft Ads'];
 

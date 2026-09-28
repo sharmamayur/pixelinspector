@@ -6,7 +6,7 @@ Pixel Inspector runs locally. No account, subscription, or PixelMonitor service 
 
 ## Install from source
 
-Requires Chrome 116 or later. Node.js and pnpm are only needed for development and the optional command-line audit tool.
+Requires Chrome 116 or later. Node.js and pnpm are only needed for development.
 
 1. Download and extract this repository using **Code → Download ZIP**, or clone it:
 
@@ -53,7 +53,7 @@ pnpm test:browser
 
 There is no extension build step. After editing files in `extension`, click **Reload** on the extension's card at `chrome://extensions`, then refresh the website you are inspecting. Extension reloads clear its session data.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, bug reports, and pull requests. The optional [command-line audit tool](scripts/audit/README.md) runs repeatable browser journeys and saves local reports.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the project layout, bug reports, and pull requests.
 
 ## Package from source
 
@@ -63,7 +63,7 @@ With pnpm and the `zip` command installed:
 pnpm package:extension
 ```
 
-The package is written to `dist/pixel-inspector-0.1.4.zip`, with `manifest.json`, `LICENSE`, and `NOTICE` at its root. The command replaces the contents of `dist`.
+The package is written to `dist/pixel-inspector-<version>.zip`, using the version in `extension/manifest.json`, with `manifest.json`, `LICENSE`, and `NOTICE` at its root. The command replaces the contents of `dist`.
 
 Official store publishing is a maintainer task; see the [store listing and release checklist](extension/store-listing.md). Building a package does not publish it.
 

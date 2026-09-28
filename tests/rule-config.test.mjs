@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { vendorFindings, bestPracticeFindings, vendorRules, sharedRules } from '../../extension/lib/vendor-rules.mjs';
-import { decodeEvents } from './analyze.mjs';
+import { vendorFindings, bestPracticeFindings, vendorRules, sharedRules } from '../extension/lib/vendor-rules.mjs';
+import { decodeEvents } from '../extension/lib/analyze.mjs';
 
 const purchase = () => ({ ...decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase')[0], id: 'E1' });
 
