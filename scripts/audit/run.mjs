@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
-import { decodeEvents, analyze, reportHtml, sessionSummary, limitations } from './analyze.mjs';
+import { decodeEvents, analyze, journeyFindings, reportHtml, sessionSummary, limitations } from './analyze.mjs';
 
 const args = process.argv.slice(2);
 if (!args[0] || args.includes('--help')) {
@@ -81,6 +81,7 @@ try {
   terminal?.close();
   await browser.close();
   report.findings = analyze(report.steps, report.events);
+  report.journeyFindings = journeyFindings(report.steps, report.events);
   report.bestPractices = bestPracticeFindings(report.events);
   await writeFile(resolve(out, 'report.json'), JSON.stringify(report, null, 2));
   await writeFile(resolve(out, 'report.html'), reportHtml(report));

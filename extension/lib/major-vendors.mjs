@@ -157,7 +157,7 @@ export function decodeMajorVendor(url, body = '') {
 
   if (host === 'ct.pinterest.com' && /^\/v3\/?$/.test(path)) {
     const pinterestFields = [...params].filter(([key]) => /^ed\[.+\]$/.test(key));
-    return [event('Pinterest', params.get('event') || 'PageVisit', params.get('tid'), `${url.origin}/v3/`, {
+    return [event('Pinterest', params.get('event') || 'pagevisit', params.get('tid'), `${url.origin}/v3/`, {
       value: params.get('ed[value]'), currency: params.get('ed[currency]'),
       hasTransactionId: Boolean(params.get('ed[order_id]') || params.get('ed[event_id]')),
       hasProductId: Boolean(params.get('ed[product_id]') || [...params.keys()].some(key => /line_items.*product_id/.test(key))),

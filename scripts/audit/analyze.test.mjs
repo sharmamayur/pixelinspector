@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { decodeEvents, analyze, reportHtml } from './analyze.mjs';
+import { decodeEvents, analyze, journeyFindings, reportHtml, sessionSummary } from './analyze.mjs';
 test('Meta event parsing retains the complete request payload', () => {
   const events = decodeEvents('https://www.facebook.com/tr/?id=123&ev=Purchase&cd[value]=0&cd[currency]=USD&ud[email]=secret&dl=https://store.test/private');
   assert.equal(events[0].value, '0');
@@ -65,4 +65,18 @@ test('Meta names are classified as standard or custom with exact capitalization'
     assert.equal(event.event, name);
   }
   assert.equal(decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=Purchase')[0].eventType, undefined);
+});
+test('journey findings keep delivery notes by action and leave payload rules to best-practice checks', () => {
+  const notes = journeyFindings([{id:'A1',name:'buy'}],[{actionId:'A1',action:'buy',id:'E1',platform:'Meta',pixelId:'123',event:'Purchase',value:null,currency:null,status:500}]);
+  assert.deepEqual(notes.map(n => [n.code, n.actionId]), [['request.delivery','A1']]);
+});
+test('exports include journey notes', () => {
+  const report = {site:'https://shop.test',startedAt:'2026-09-28T12:00:00Z',consent:'Not recorded',steps:[],events:[],
+    journeyFindings:[{code:'request.delivery',action:'Clicked “Buy”',evidence:['E1'],text:'Meta Purchase <b>returned HTTP 500</b>.',fix:'Check vendor diagnostics.'}]};
+  const html = reportHtml(report);
+  assert.match(html,/Delivery and journey notes/);
+  assert.match(html,/Delivery<\/b> · Clicked “Buy” · E1/);
+  assert.doesNotMatch(html,/<b>returned/);
+  assert.match(sessionSummary(report),/Delivery · Clicked “Buy”: Meta Purchase/);
+  assert.match(sessionSummary({...report,journeyFindings:[]}),/No delivery failures or missing events were noted/);
 });

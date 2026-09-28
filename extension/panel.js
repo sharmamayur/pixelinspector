@@ -1,7 +1,7 @@
 import { bestPracticeVendors } from './lib/rule-config.mjs';
 import { bestPracticeFindings } from './lib/vendor-rules.mjs';
 import { metaEventType, isMetaStandardField } from './lib/meta-events.mjs';
-import { reportHtml, sessionSummary, failureDetails } from './lib/analyze.mjs';
+import { reportHtml, sessionSummary, failureDetails, journeyFindings, journeyLabel } from './lib/analyze.mjs';
 const $ = id => document.getElementById(id);
 let audit = null;
 let eventSession = null;
@@ -180,7 +180,21 @@ function groupedActionEvents(actionId, events, expandMatches = false) {
   }
   return container;
 }
-function journeyItem(action, index, events, filtersActive, expandMatches = false, actionMatched = false) {
+function sessionNotes(session) {
+  return journeyFindings(session.actions || session.steps || [], session.events, { live: true, endTime: session.endedAt ? Date.parse(session.endedAt) : Date.now() });
+}
+function actionNotes(notes) {
+  const list = document.createElement('div'); list.className = 'action-notes';
+  for (const note of notes) {
+    const item = document.createElement('div'); item.className = 'check-finding warning';
+    const label = document.createElement('strong'); label.textContent = journeyLabel(note);
+    const problem = document.createElement('p'); problem.textContent = note.text;
+    const fix = document.createElement('p'); fix.textContent = `Suggested fix: ${note.fix}`;
+    item.append(label, problem, fix); list.append(item);
+  }
+  return list;
+}
+function journeyItem(action, index, events, notes, filtersActive, expandMatches = false, actionMatched = false) {
   const actionId = action.id || String(index);
   const item = document.createElement('li'); item.dataset.actionId = actionId;
   const name = document.createElement('strong'); name.textContent = action.name.replace(/^\d+\.\s*/, '');
@@ -203,7 +217,9 @@ function journeyItem(action, index, events, filtersActive, expandMatches = false
   if (flagged) summary.textContent += ` · ${flagged} checks flagged`;
   tracking.append(summary);
   if (events.length) tracking.append(groupedActionEvents(actionId, events, expandMatches));
-  item.append(name, description, time, tracking);
+  item.append(name, description, time);
+  if (notes.length) item.append(actionNotes(notes));
+  item.append(tracking);
   return item;
 }
 function eventChecks(event) {
@@ -315,16 +331,17 @@ function render() {
   const vendor = $('filter').value;
   const filtersActive = Boolean(vendor || query);
   const vendorEvents = audit.events.filter(event => !vendor || event.platform === vendor);
+  const notes = sessionNotes(audit).filter(note => !vendor || note.platform === vendor);
   const visibleActions = journeyActions.map((action, index) => {
     const linkedEvents = vendorEvents.filter(event => belongsToAction(event, action));
     const actionMatched = Boolean(query && actionSearchText(action).includes(query));
     const events = query && !actionMatched ? linkedEvents.filter(event => eventSearchText(event).includes(query)) : linkedEvents;
-    return { action, index, events, actionMatched };
+    return { action, index, events, actionMatched, notes: notes.filter(note => note.actionId === action.id) };
   }).filter(result => !filtersActive || result.actionMatched || result.events.length);
   const visibleEventCount = visibleActions.reduce((total, result) => total + result.events.length, 0);
   $('actionCount').textContent = filtersActive ? `${visibleActions.length} of ${journeyActions.length} actions` : `${journeyActions.length} actions`;
   $('count').textContent = `${visibleEventCount} events`;
-  $('journey').replaceChildren(...visibleActions.map(({ action, index, events, actionMatched }) => journeyItem(action, index, events, filtersActive, Boolean(query), actionMatched)));
+  $('journey').replaceChildren(...visibleActions.map(({ action, index, events, notes, actionMatched }) => journeyItem(action, index, events, notes, filtersActive, Boolean(query), actionMatched)));
   if (!visibleActions.length) {
     const item = document.createElement('li');
     item.textContent = filtersActive ? 'No journey activity matches your search.' : 'Your actions will appear here.';
@@ -362,7 +379,7 @@ $('expandAll').onclick = () => setJourneyExpansion(true);
 $('collapseAll').onclick = () => setJourneyExpansion(false);
 function download(kind) {
   if (!audit || audit.recording) return;
-  const evidence = { ...audit, bestPractices: bestPracticeFindings(audit.events) }; delete evidence.findings;
+  const evidence = { ...audit, journeyFindings: sessionNotes(audit), bestPractices: bestPracticeFindings(audit.events) }; delete evidence.findings;
   const content = kind === 'html' ? reportHtml(evidence) : kind === 'json' ? JSON.stringify(evidence, null, 2) : sessionSummary(evidence);
   const blob = new Blob([content], { type: kind === 'html' ? 'text/html' : kind === 'json' ? 'application/json' : 'text/plain' });
   const suffix = kind === 'summary' ? 'summary.txt' : `report.${kind}`;

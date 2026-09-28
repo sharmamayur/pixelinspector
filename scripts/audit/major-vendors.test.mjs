@@ -220,3 +220,7 @@ test('analytics parsers ignore scripts, unrelated requests and malformed batches
     ['https://shop.test/com.snowplowanalytics.snowplow/tp2', '{}'],
   ]) assert.deepEqual(decodeEvents(url, body), []);
 });
+
+test('Pinterest requests without an event name are page visits', () => {
+  assert.equal(one('https://ct.pinterest.com/v3/?tid=123').event, 'pagevisit');
+});

@@ -32,6 +32,10 @@ It records request outcomes and payload fields as evidence without labeling the 
 
 Automatic capture records clicks, product URL patterns (`/product/`, `/products/`, `/p/`), product metadata, ordinary page navigation, and URL-changing single-page navigation. Forms are labeled as submitted without assuming a purchase or lead succeeded. Other languages and unusual controls appear as generic clicks; embedded frames may be missed.
 
+## Delivery and journey notes
+
+Notes appear under an action when a recognized request after it failed in the browser or returned HTTP 400 or higher, or when a vendor seen elsewhere in the session sent no matching page-view, product-view, add-to-cart, or checkout event within 8 seconds of that action. Missing-event notes are inferred from browsing, not from the site's configuration; consent, custom event names, or server-side tracking can explain them. Notes cover every recognized vendor and follow the vendor filter. HTML and plain-text exports include them; JSON stores them under `journeyFindings`.
+
 ## Vendor best-practice checks
 
 The panel flags observed **Meta and GA4** payload issues and recommendations. Open a flagged event for the finding, suggested fix, vendor reference, and original payload. HTML, JSON, and plain-text exports include these checks; JSON stores them under `bestPractices`.

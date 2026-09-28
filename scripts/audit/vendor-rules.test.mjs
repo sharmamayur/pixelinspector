@@ -1,4 +1,4 @@
-import { bestPracticeFindings } from '../../extension/lib/vendor-rules.mjs';
+import { bestPracticeFindings, vendorFindings } from '../../extension/lib/vendor-rules.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeEvents, analyze, reportHtml } from './analyze.mjs';
@@ -172,4 +172,7 @@ test('normal events are not flagged for unseen CAPI, deduplication, or optional 
     ...decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=page_view'),
   ];
   assert.deepEqual(bestPracticeFindings(events), []);
+});
+test('Pinterest commerce rules match event codes regardless of case', () => {
+  assert.ok(codes(vendorFindings({platform:'Pinterest',event:'AddToCart',pixelId:'123',value:'10',currency:null})).includes('pinterest.currency'));
 });

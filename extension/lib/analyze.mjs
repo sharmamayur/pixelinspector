@@ -144,21 +144,21 @@ export function analyze(steps, events, { live = false, endTime = Date.now() } = 
   const findings = [];
   for (const step of steps) {
     if (step.error) {
-      findings.push({ severity: 'warning', code: 'action.incomplete', action: step.name, evidence: [], text: `Action could not be completed: ${step.error}. No absence claims made for this action.`, fix: 'Repeat this action before drawing conclusions.' });
+      findings.push({ severity: 'warning', code: 'action.incomplete', action: step.name, actionId: step.id, evidence: [], text: `Action could not be completed: ${step.error}. No absence claims made for this action.`, fix: 'Repeat this action before drawing conclusions.' });
       continue;
     }
     const captured = events.filter(e => step.id && e.actionId ? e.actionId === step.id : (e.action || e.step) === step.name);
     for (const expected of (!live || step.endedAt ? step.expect || [] : [])) {
       if (!captured.some(e => e.platform === expected.platform && e.event === expected.event)) {
-        findings.push({ severity: 'warning', code: 'event.not_observed', platform: expected.platform, action: step.name, evidence: [], text: `${expected.platform} ${expected.event} was not observed after this action. It may be consent-dependent, delayed, or sent server-side.`, fix: 'Repeat the journey with the intended consent choice and verify server-side tracking.' });
+        findings.push({ severity: 'warning', code: 'event.not_observed', platform: expected.platform, action: step.name, actionId: step.id, evidence: [], text: `${expected.platform} ${expected.event} was not observed after this action. It may be consent-dependent, delayed, or sent server-side.`, fix: 'Repeat the journey with the intended consent choice and verify server-side tracking.' });
       }
     }
     for (const event of captured) {
       if (event.failed) {
         const failure = failureDetails(event.failureReason);
-        findings.push({ severity: 'warning', code: 'request.delivery', platform: event.platform, action: step.name, evidence: [event.id], text: `${event.platform} ${event.event} request to destination ${event.pixelId} ${failure.text}. Delivery is unverified.`, fix: failure.fix });
+        findings.push({ severity: 'warning', code: 'request.delivery', platform: event.platform, action: step.name, actionId: step.id, evidence: [event.id], text: `${event.platform} ${event.event} request to destination ${event.pixelId} ${failure.text}. Delivery is unverified.`, fix: failure.fix });
       } else if (event.status >= 400) {
-        findings.push({ severity: 'warning', code: 'request.delivery', platform: event.platform, action: step.name, evidence: [event.id], text: `${event.platform} ${event.event} request to destination ${event.pixelId} returned HTTP ${event.status}. Delivery needs verification.`, fix: 'Check consent, network availability, and vendor diagnostics. One HTTP error does not establish a setup defect.' });
+        findings.push({ severity: 'warning', code: 'request.delivery', platform: event.platform, action: step.name, actionId: step.id, evidence: [event.id], text: `${event.platform} ${event.event} request to destination ${event.pixelId} returned HTTP ${event.status}. Delivery needs verification.`, fix: 'Check consent, network availability, and vendor diagnostics. One HTTP error does not establish a setup defect.' });
       }
       findings.push(...vendorFindings(event));
     }
@@ -167,10 +167,19 @@ export function analyze(steps, events, { live = false, endTime = Date.now() } = 
   return findings.sort((a, b) => (a.severity === 'error' ? 0 : 1) - (b.severity === 'error' ? 0 : 1));
 }
 
+// Delivery failures and events missing after an action. Payload rules are reported by bestPracticeFindings.
+const journeyCodes = new Set(['action.incomplete', 'event.not_observed', 'automatic.not_observed', 'request.delivery']);
+export function journeyFindings(steps, events, options) {
+  return analyze(steps, events, options).filter(finding => journeyCodes.has(finding.code));
+}
+export const journeyLabel = finding => finding.code === 'request.delivery' ? 'Delivery' : finding.inferred ? 'Not observed (inferred)' : finding.code === 'action.incomplete' ? 'Incomplete action' : 'Not observed';
+
 export const limitations = 'Single browser observation, not proof of broken tracking or lost revenue. Server-side events, platform receipt, attribution, custom endpoints, and unrecognized payload formats are not verified. Missing events are checked against explicit expectations or clearly labeled browsing-based inferences. Inferred actions may not have succeeded. Repeated events are listed without assuming duplication is a defect.';
 export function reportHtml(report) {
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const checks = bestPracticeFindings(report.events);
+  const notes = report.journeyFindings || [];
+  const notesHtml = `<h2>Delivery and journey notes</h2><p>Failed or rejected requests, and events expected after an action but not observed. Inferred expectations come from browsing, not site configuration.</p>${notes.length ? `<ul>${notes.map(f => `<li><b>${esc(journeyLabel(f))}</b> · ${esc(f.action)}${f.evidence?.length ? ` · ${esc(f.evidence.join(', '))}` : ''}<p>${esc(f.text)}</p><p>Suggested fix: ${esc(f.fix)}</p></li>`).join('')}</ul>` : '<p>No delivery failures or missing events were noted.</p>'}`;
   const checkHtml = `<h2>Vendor best-practice checks</h2><p>${bestPracticeVendors.join(' and ')} payload checks only. No flags is not a complete implementation audit. Recommendations may depend on reporting goals. Action causation, server-side tracking, consent compliance, and vendor receipt are not verified.</p>${checks.length ? `<ul>${checks.map(f => `<li><b>${esc(f.category)}</b> · ${esc(f.eventId)} · Destination ${esc(f.pixelId)}<p>${esc(f.text)}</p><p>Suggested fix: ${esc(f.fix)}</p><a href="${esc(f.source)}">Vendor documentation</a></li>`).join('')}</ul>` : `<p>No issues found by the available checks on captured ${esc(bestPracticeVendors.join('/'))} requests.</p>`}`;
   const payloadHtml = event => {
     const required = (event.requiredFields || []).map(field => `${esc(field.name)}: ${esc(field.present ? field.value : 'Missing')}`).join('<br>') || 'Schema unavailable';
@@ -186,7 +195,7 @@ export function reportHtml(report) {
   const recorded = report.actions || report.steps || [];
   const actions = recorded.filter(action => action.replay);
   const timeline = actions.length ? actions : recorded;
-  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>PixelMonitor pixel inspection</title><style>body{font:16px/1.6 system-ui;max-width:1200px;margin:48px auto;padding:0 24px;color:#172033}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;vertical-align:top;border-bottom:1px solid #ddd;padding:10px}aside{background:#eff6ff;padding:16px}img{max-width:100%;border:1px solid #ddd}small{color:#526078}</style><h1>PixelMonitor pixel inspection</h1><p>${esc(report.site)} · ${esc(report.startedAt)}</p><p>Browser: ${esc(report.browser)} · Consent: ${esc(report.consent)}</p><aside>${esc(limitations)}</aside><h2>Visitor journey</h2><ol>${timeline.map(action => `<li><b>${esc(action.name.replace(/^\d+\.\s*/, ''))}</b> — ${esc(action.error || 'Completed')}<br><small>${esc(action.startedAt)} to ${esc(action.endedAt)}</small>${action.screenshot ? `<br><a href="${esc(action.screenshot)}">View action screenshot</a>` : ''}</li>`).join('')}</ol>${checkHtml}<h2>Observed browser requests</h2><table><tr><th>Evidence</th><th>After action / time</th><th>Platform / event</th><th>Pixel ID</th><th>Payload fields</th><th>HTTP</th></tr>${report.events.map(e => `<tr><td>${esc(e.id)}</td><td>${esc(e.action || e.step)}<br>${esc(e.at)}</td><td>${esc(e.platform)} / ${esc(e.event)}${e.platform === 'Meta' ? `<br>${metaEventType(e.event) === 'standard' ? 'Standard event' : 'Custom event'}` : ''}</td><td>${esc(e.pixelId)}</td><td>${payloadHtml(e)}</td><td>${esc(e.failed ? 'Failed' : e.status || 'Unconfirmed')}</td></tr>`).join('')}</table>`;
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>PixelMonitor pixel inspection</title><style>body{font:16px/1.6 system-ui;max-width:1200px;margin:48px auto;padding:0 24px;color:#172033}h1,h2{line-height:1.2}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;vertical-align:top;border-bottom:1px solid #ddd;padding:10px}aside{background:#eff6ff;padding:16px}img{max-width:100%;border:1px solid #ddd}small{color:#526078}</style><h1>PixelMonitor pixel inspection</h1><p>${esc(report.site)} · ${esc(report.startedAt)}</p><p>Browser: ${esc(report.browser)} · Consent: ${esc(report.consent)}</p><aside>${esc(limitations)}</aside><h2>Visitor journey</h2><ol>${timeline.map(action => `<li><b>${esc(action.name.replace(/^\d+\.\s*/, ''))}</b> — ${esc(action.error || 'Completed')}<br><small>${esc(action.startedAt)} to ${esc(action.endedAt)}</small>${action.screenshot ? `<br><a href="${esc(action.screenshot)}">View action screenshot</a>` : ''}</li>`).join('')}</ol>${notesHtml}${checkHtml}<h2>Observed browser requests</h2><table><tr><th>Evidence</th><th>After action / time</th><th>Platform / event</th><th>Pixel ID</th><th>Payload fields</th><th>HTTP</th></tr>${report.events.map(e => `<tr><td>${esc(e.id)}</td><td>${esc(e.action || e.step)}<br>${esc(e.at)}</td><td>${esc(e.platform)} / ${esc(e.event)}${e.platform === 'Meta' ? `<br>${metaEventType(e.event) === 'standard' ? 'Standard event' : 'Custom event'}` : ''}</td><td>${esc(e.pixelId)}</td><td>${payloadHtml(e)}</td><td>${esc(e.failed ? 'Failed' : e.status || 'Unconfirmed')}</td></tr>`).join('')}</table>`;
 }
 export function sessionSummary(report) {
   const observed = [...new Set(report.events.map(e => `${e.platform} ${e.event}`))].join(', ');
@@ -194,6 +203,7 @@ export function sessionSummary(report) {
   const actions = recorded.filter(action => action.replay && !action.error);
   const timeline = (actions.length ? actions : recorded.filter(action => !action.error)).map(action => action.name.replace(/^\d+\.\s*/, '')).join(' → ');
   const checks = bestPracticeFindings(report.events);
+  const noteText = (report.journeyFindings || []).map(f => `${journeyLabel(f)} · ${f.action}: ${f.text}\nSuggested fix: ${f.fix}`).join('\n\n');
   const checkText = checks.map(f => `${f.category} · ${f.eventId || 'Event'} · Destination ${f.pixelId}: ${f.text}\nSuggested fix: ${f.fix}\nReference: ${f.source}`).join('\n\n');
-  return `Pixel tracking summary: ${report.site}\n\nCaptured: ${report.startedAt}\nConsent setting: ${report.consent}\n\nVisitor journey: ${timeline || 'No actions recorded'}.\n${observed ? `Observed browser events: ${observed}.` : 'No events recognized by PixelMonitor were observed during this session.'}\n\nThis capture shows browser requests only; server-side tracking and vendor processing are not visible here.\n\nVendor best-practice checks (${bestPracticeVendors.join(' and ')} payloads):\n${checkText || "No issues found by the available checks; other vendors are not checked."}\nNo flags is not a complete implementation audit. Recommendations may depend on reporting goals.\n`;
+  return `Pixel tracking summary: ${report.site}\n\nCaptured: ${report.startedAt}\nConsent setting: ${report.consent}\n\nVisitor journey: ${timeline || 'No actions recorded'}.\n${observed ? `Observed browser events: ${observed}.` : 'No events recognized by PixelMonitor were observed during this session.'}\n\nThis capture shows browser requests only; server-side tracking and vendor processing are not visible here.\n\nDelivery and journey notes:\n${noteText || 'No delivery failures or missing events were noted.'}\n\nVendor best-practice checks (${bestPracticeVendors.join(' and ')} payloads):\n${checkText || "No issues found by the available checks; other vendors are not checked."}\nNo flags is not a complete implementation audit. Recommendations may depend on reporting goals.\n`;
 }

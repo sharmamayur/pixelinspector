@@ -19,3 +19,8 @@ test('generic form submissions and unknown platforms do not infer conversions',(
  assert.equal(automaticFindings([{...step,action:'form'}],[pixel],start+9000).length,0);
  assert.equal(automaticFindings([step],[{...pixel,platform:'Google Ads'}],start+9000).length,0);
 });
+test('Pinterest inferred expectations ignore event-name case',()=>{
+ const pin={platform:'Pinterest',event:'PageVisit',status:200,at:new Date(start).toISOString()};
+ assert.equal(automaticFindings([{...step,action:'page'}],[pin],start+9000).length,0);
+ assert.equal(automaticFindings([{...step,action:'page'}],[{...pin,platform:'Meta'}],start+9000).length,1);
+});

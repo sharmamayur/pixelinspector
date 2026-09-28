@@ -1,5 +1,5 @@
 import { actionLabels } from './lib/automatic.mjs';
-import { decodeEvents, analyze, limitations } from './lib/analyze.mjs';
+import { decodeEvents, limitations } from './lib/analyze.mjs';
 
 // Serialize reads and writes, including after a service worker restart.
 let queue = Promise.resolve();
@@ -9,6 +9,12 @@ function enqueue(work) {
   return result;
 }
 const now = () => new Date().toISOString();
+// Mirror of which tabs have a session (value: recording), so requests from other tabs skip
+// the queue and storage. Null until storage is first read, e.g. after a worker restart.
+let sessions = null;
+function track(audits) {
+  sessions = new Map(Object.values(audits).map(audit => [audit.tabId, Boolean(audit.recording)]));
+}
 function normalize(audit) {
   if (audit?.steps && !audit.actions) {
     audit.actions = audit.steps;
@@ -26,6 +32,7 @@ async function readAll() {
     await chrome.storage.session.set({ audits });
     await chrome.storage.session.remove('audit');
   }
+  track(audits);
   return audits;
 }
 const read = async tabId => (await readAll())[tabId] || null;
@@ -33,11 +40,13 @@ async function save(audit) {
   const audits = await readAll();
   audits[audit.tabId] = audit;
   await chrome.storage.session.set({ audits });
+  track(audits);
 }
 async function remove(tabId) {
   const audits = await readAll();
   delete audits[tabId];
   await chrome.storage.session.set({ audits });
+  track(audits);
 }
 function finishAction(audit) {
   const action = audit.actions.at(-1);
@@ -88,8 +97,10 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return false;
+  const fromContent = Boolean(sender.tab && !sender.url?.startsWith(chrome.runtime.getURL('')));
+  // Let requests through while a start or resume is queued, before storage reflects it.
+  if (!fromContent && ['start', 'resume'].includes(message.type)) sessions?.set(Number(message.tabId), true);
   enqueue(async () => {
-    const fromContent = Boolean(sender.tab && !sender.url?.startsWith(chrome.runtime.getURL('')));
     const tabId = fromContent ? sender.tab.id : Number(message.tabId);
     if (!Number.isInteger(tabId) || tabId < 0) throw new Error('Select a browser tab first.');
     let audit = await read(tabId);
@@ -111,7 +122,6 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
               event.action = previous.name;
             }
           }
-          audit.findings = analyze(audit.actions, audit.events, { live: true });
           await save(audit);
         }
         if (audit.notice) {
@@ -122,14 +132,10 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       }
       finishAction(audit);
       audit.actions.push({ id: `A${audit.actions.length + 1}`, name: actionName(message, replay), action: message.action, automatic: true, startedAt: now(), expect: [], replay });
-      audit.findings = analyze(audit.actions, audit.events, { live: true });
       await save(audit);
       return null;
     }
-    if (message.type === 'get') {
-      if (audit) audit.findings = analyze(audit.actions, audit.events, { live: true, endTime: audit.endedAt ? Date.parse(audit.endedAt) : Date.now() });
-      return audit;
-    }
+    if (message.type === 'get') return audit;
     if (message.type === 'start') {
       if (audit) throw new Error('Clear the current session before starting a new one.');
       const tab = await chrome.tabs.get(tabId);
@@ -155,7 +161,6 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       } else if (message.type === 'consent') audit.consent = String(message.value || 'Not recorded').slice(0, 500);
       else throw new Error('Unknown command.');
     }
-    audit.findings = analyze(audit.actions, audit.events, { live: true });
     await save(audit);
     await badge(tabId, audit);
     if (message.type === 'start' || message.type === 'resume') {
@@ -170,7 +175,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
 });
 const filter = { urls: ['http://*/*', 'https://*/*'] };
 chrome.webRequest.onBeforeRequest.addListener(details => {
-  if (details.tabId < 0) return;
+  if (details.tabId < 0 || (sessions && !sessions.get(details.tabId))) return;
   enqueue(async () => {
     const audit = await read(details.tabId);
     if (!audit?.recording) return;
@@ -191,18 +196,18 @@ chrome.webRequest.onBeforeRequest.addListener(details => {
       audit.notice = 'Session paused at the 1,000-event limit. Clear it before starting another.';
       finishAction(audit);
       audit.endedAt = now();
-      audit.findings = analyze(audit.actions, audit.events);
       await save(audit);
       await badge(details.tabId, audit);
       return;
     }
     const currentAction = audit.actions.at(-1);
     for (const event of decoded) audit.events.push({ ...event, id: `E${audit.events.length + 1}`, requestId: details.requestId, actionId: currentAction.id, action: currentAction.name, at: new Date(details.timeStamp).toISOString() });
-    audit.findings = analyze(audit.actions, audit.events, { live: true });
     await save(audit);
   });
 }, filter, ['requestBody']);
 function complete(details, failed = false) {
+  // Paused sessions still record outcomes for requests captured before the pause.
+  if (details.tabId < 0 || (sessions && !sessions.has(details.tabId))) return;
   enqueue(async () => {
     const audit = await read(details.tabId);
     if (!audit) return;
@@ -215,7 +220,6 @@ function complete(details, failed = false) {
       }
       else event.status = details.statusCode;
     }
-    audit.findings = analyze(audit.actions, audit.events, { live: true });
     await save(audit);
   });
 }
@@ -224,3 +228,8 @@ chrome.webRequest.onErrorOccurred.addListener(details => complete(details, true)
 chrome.tabs.onRemoved.addListener(tabId => enqueue(async () => {
   if (await read(tabId)) await remove(tabId);
 }));
+// Also follow writes made outside save() and remove(), such as by test tooling.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'session' && changes.audits) track(changes.audits.newValue || {});
+});
+enqueue(readAll);
