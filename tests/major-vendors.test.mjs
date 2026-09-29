@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { decodeEvents } from '../extension/lib/analyze.mjs';
+import { prettyJson } from '../extension/lib/payload-fields.mjs';
 
 const one = (url, body = '') => {
   const events = decodeEvents(url, body);
@@ -204,9 +205,20 @@ test('Snowplow parses first-party collectors, batches and encoded Unicode custom
     assert.deepEqual(events.map(e => [e.event, e.pixelId]), [['PageView', 'store'], ['product_view', 'store'], ['Clicked', 'other-app']]);
     assert.ok(events[1].customFields.some(f => f.value === 'Café ☕'));
     assert.ok(!events[0].payloadFields.some(f => f.name === field));
+    assert.deepEqual(events[1].jsonFields, [{ name: field, label: 'Self-describing event', json: JSON.stringify(custom) }]);
+    assert.ok(!events[1].payloadFields.some(f => f.name === field || f.name.startsWith('decoded')));
   }
   assert.deepEqual([one('https://collect.shop.test/i?e=pp&tv=js-4.0.0').platform, one('https://collect.shop.test/i?e=pp&tv=js-4.0.0').pixelId], ['Snowplow', 'collect.shop.test']);
-  assert.equal(one('https://collect.shop.test/i?e=ue&tv=js-4&ue_px=invalid').event, 'Self-describing event');
+  const undecodable = one('https://collect.shop.test/i?e=ue&tv=js-4&ue_px=invalid');
+  assert.equal(undecodable.event, 'Self-describing event');
+  assert.deepEqual(undecodable.jsonFields, []);
+  assert.equal(undecodable.payloadFields.find(f => f.name === 'ue_px').value, 'invalid');
+  const contexts = { schema: 'iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-0', data: [{ schema: 'iglu:com.snowplowanalytics.snowplow/web_page/jsonschema/1-0-0', data: { id: 'page-1', count: 2 } }] };
+  const withContexts = one(`https://collect.shop.test/i?e=pv&tv=js-4&cx=${Buffer.from(JSON.stringify(contexts)).toString('base64url')}`);
+  assert.deepEqual(withContexts.jsonFields, [{ name: 'cx', label: 'Contexts', json: JSON.stringify(contexts) }]);
+  assert.match(prettyJson(withContexts.jsonFields[0].json), /^\{\n  "schema": /);
+  assert.equal(prettyJson('{broken'), '{broken');
+  assert.deepEqual(withContexts.payloadFields.map(f => f.name), ['e', 'tv']);
   assert.equal(one('https://collect.shop.test/i?e=tr&tv=js-4&tr_tt=0&tr_cu=USD').value, '0');
 });
 

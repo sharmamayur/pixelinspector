@@ -2,6 +2,7 @@ import { bestPracticeVendors } from './lib/rule-config.mjs';
 import { bestPracticeFindings, checkedVendors } from './lib/vendor-rules.mjs';
 import { metaEventType, isMetaStandardField } from './lib/meta-events.mjs';
 import { reportHtml, sessionSummary, failureLabel } from './lib/analyze.mjs';
+import { prettyJson } from './lib/payload-fields.mjs';
 const $ = id => document.getElementById(id);
 let audit = null;
 // The tab whose session the panel shows; only its storage key triggers a re-render.
@@ -61,6 +62,15 @@ function payloadRow(field, category, requirement, missing = false) {
   }
   return row;
 }
+function jsonFieldBlock(field) {
+  const block = document.createElement('div'); block.className = 'json-field';
+  const title = document.createElement('div'); title.className = 'json-field-name';
+  const label = document.createElement('span'); label.textContent = field.label || field.name;
+  const name = document.createElement('code'); name.textContent = field.name;
+  const value = document.createElement('pre'); value.textContent = prettyJson(field.json);
+  title.append(label, name); block.append(title, value);
+  return block;
+}
 function unifiedPayloadSection(event) {
   const section = document.createElement('section'); section.className = 'payload-fields unified-payload';
   const heading = document.createElement('h4'); heading.textContent = 'Payload fields';
@@ -105,7 +115,8 @@ function unifiedPayloadSection(event) {
   list.append(...rows.required, ...rows.standard, ...rows.custom, ...rows.other);
   section.append(heading, legend);
   if (list.children.length) section.append(list);
-  else { const empty = document.createElement('p'); empty.textContent = 'No payload fields were captured for this request.'; section.append(empty); }
+  for (const field of event.jsonFields || []) section.append(jsonFieldBlock(field));
+  if (!list.children.length && !event.jsonFields?.length) { const empty = document.createElement('p'); empty.textContent = 'No payload fields were captured for this request.'; section.append(empty); }
   return section;
 }
 function actionContext(action) {
@@ -234,7 +245,7 @@ function readableEventDetails(event, existing) {
   const wasOpen = Boolean(existing?.open);
   const details = existing || document.createElement('details');
   details.className = 'event-details';
-  const summary = document.createElement('summary'); summary.textContent = `View payload · ${event.payloadFields?.length || 0} fields`;
+  const summary = document.createElement('summary'); summary.textContent = `View payload · ${(event.payloadFields?.length || 0) + (event.jsonFields?.length || 0)} fields`;
   details.replaceChildren(summary, eventChecks(event), unifiedPayloadSection(event));
   details.open = wasOpen;
   return details;
@@ -252,7 +263,7 @@ function eventSearchText(event) {
     event.platform, event.event, event.action, event.pixelId, event.endpoint,
     event.failed ? 'failed request' : event.status ? `HTTP ${event.status}` : 'response unconfirmed',
     ...bestPracticeFindings([event]).map(finding => `${finding.category} ${finding.text} ${finding.fix}`),
-    JSON.stringify(event.requiredFields || []), JSON.stringify(event.customFields || []), JSON.stringify(event.payloadFields || []),
+    JSON.stringify(event.requiredFields || []), JSON.stringify(event.customFields || []), JSON.stringify(event.payloadFields || []), JSON.stringify(event.jsonFields || []),
   ].filter(Boolean).join(' ').toLowerCase();
 }
 async function targetTabId(explicit) {
