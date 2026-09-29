@@ -10,6 +10,7 @@ main{padding:14px}.card{background:#fff;border:1px solid var(--line);border-radi
 .check-badge{font-size:10px;font-weight:700;padding:4px 7px;border-radius:6px;background:#fff4df;color:#854d0e}.event-heading{flex-wrap:wrap}.event-checks{padding:12px;border-bottom:1px solid var(--line)}.event-checks h4{margin:0 0 8px}.event-checks p,.checks-card p{font-size:11px;line-height:1.5}.check-finding{border-left:3px solid #d97706;padding:8px 10px;margin:8px 0;background:#fffbeb}.check-finding.error{border-color:#dc2626;background:#fff7f7}.check-finding strong{font-size:11px}.check-finding a{font-size:11px;color:#1d4ed8}
 .event-heading .event-type{display:inline-block;font-size:10px;font-weight:700;padding:4px 7px;border-radius:6px;border:1px solid}.event-heading .event-type-standard{background:#eff6ff;color:#1e40af;border-color:#bfdbfe}.event-heading .event-type-custom{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
 
-.field-standard .field-indicator{background:#2563eb}
+.field-indicator.field-required,.payload-row.field-required .field-indicator{background:#2563eb}.field-indicator.field-standard,.payload-row.field-standard .field-indicator{background:#0d9488}.field-indicator.field-custom,.payload-row.field-custom .field-indicator{background:#7c3aed}
 
-.field-required-label{font-size:9px;font-weight:600;color:#475569;margin-left:5px}.field-standard.field-missing .field-indicator{background:#dc2626}
+.payload-row.field-missing .field-indicator{background:#dc2626}
+.event-heading .event-type{padding:2px 6px;font-size:9px}.event-time{margin-left:auto;color:#98a2b3;font-size:9px;white-space:nowrap}.event-status-problem{color:#b42318!important}

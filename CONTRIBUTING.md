@@ -31,7 +31,7 @@ Load the `extension` directory as an unpacked extension in Chrome. There is no c
 - `extension/background.js`: request capture and per-tab sessions.
 - `extension/observer.js`: page navigation and interaction capture.
 - `extension/panel.*`: side-panel interface and exports.
-- `extension/lib/`: shared request parsers and report generation.
+- `extension/lib/`: shared request parsers and report generation. `standards.mjs` lists each vendor's documented standard events and event parameters; cite the vendor documentation when changing it.
 - `tests/`: parser and rule tests (`*.test.mjs`) and the Chromium extension smoke test.
 
 ## Submit a pull request

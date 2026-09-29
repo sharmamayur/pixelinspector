@@ -21,7 +21,8 @@ test('payload fields split required schema from website-supplied fields', () => 
   const [ga4] = decodeEvents('https://www.google-analytics.com/g/collect?tid=G-123&en=purchase&ep.transaction_id=ORDER-PRIVATE&epn.value=20&ep.currency=USD&pr1=idSKU~nmShoe&ep.coupon=SPRING');
   assert.equal(ga4.requiredFields.find(field => field.name === 'transaction_id').value, 'ORDER-PRIVATE');
   assert.equal(ga4.requiredFields.find(field => field.name === 'items').value, '1 item');
-  assert.ok(ga4.customFields.some(field => field.name === 'ep.coupon' && field.value === 'SPRING'));
+  assert.ok(ga4.standardFields.some(field => field.name === 'ep.coupon' && field.value === 'SPRING'));
+  assert.ok(!ga4.customFields.some(field => field.name === 'ep.coupon'));
   assert.equal(ga4.payloadFields.find(field => field.name === 'ep.transaction_id').value, 'ORDER-PRIVATE');
 });
 test('Meta malformed IDs and standard-name casing are distinguished', () => {

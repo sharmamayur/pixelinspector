@@ -1,6 +1,5 @@
 import { bestPracticeVendors } from './lib/rule-config.mjs';
 import { bestPracticeFindings, checkedVendors } from './lib/vendor-rules.mjs';
-import { metaEventType, isMetaStandardField } from './lib/meta-events.mjs';
 import { reportHtml, sessionSummary, failureLabel } from './lib/analyze.mjs';
 import { prettyJson } from './lib/payload-fields.mjs';
 const $ = id => document.getElementById(id);
@@ -56,10 +55,6 @@ function payloadRow(field, category, requirement, missing = false) {
   indicator.title = kind; indicator.setAttribute('aria-label', kind);
   const name = document.createElement('span'); name.textContent = label;
   term.replaceChildren(indicator, name);
-  if (category === 'standard' && requirement) {
-    const marker = document.createElement('small'); marker.className = 'field-required-label';
-    marker.textContent = 'Required'; term.append(marker);
-  }
   return row;
 }
 function jsonFieldBlock(field) {
@@ -75,28 +70,26 @@ function unifiedPayloadSection(event) {
   const section = document.createElement('section'); section.className = 'payload-fields unified-payload';
   const heading = document.createElement('h4'); heading.textContent = 'Payload fields';
   const legend = document.createElement('div'); legend.className = 'payload-legend';
-  for (const [kind, label] of [...(event.platform === 'Meta' ? [['standard','Standard']] : [['required','Required']]), ['custom','Custom'], ['other','Other']]) {
+  for (const [kind, label] of [['required','Required'], ['standard','Standard'], ['custom','Custom'], ['other','Other']]) {
     const item = document.createElement('span');
     const dot = document.createElement('i'); dot.className = `field-indicator field-${kind}`;
-    if (kind === 'required') dot.style.background = '#2563eb';
-    if (kind === 'standard') dot.style.background = '#2563eb';
-    if (kind === 'custom') dot.style.background = '#7c3aed';
     item.append(dot, label); legend.append(item);
   }
   const list = document.createElement('dl');
   const rows = { required: [], standard: [], custom: [], other: [] };
-  const requiredKind = event.platform === 'Meta' ? 'standard' : 'required';
   const required = event.requiredFields || [];
+  const standard = new Map((event.standardFields || []).map(field => [field.name, field]));
   const custom = new Map((event.customFields || []).map(field => [field.name, field]));
   const matchedRequired = new Set();
+  const matchedStandard = new Set();
   const matchedCustom = new Set();
   for (const field of event.payloadFields || []) {
     const requiredIndex = required.findIndex((candidate, index) => !matchedRequired.has(index) && requiredFieldMatch(field, candidate));
     if (requiredIndex >= 0) {
       matchedRequired.add(requiredIndex);
-      rows[requiredKind].push(payloadRow(field, requiredKind, required[requiredIndex].requirement));
-    } else if (event.platform === 'Meta' && isMetaStandardField(field.name)) {
-      matchedCustom.add(field.name);
+      rows.required.push(payloadRow(field, 'required', required[requiredIndex].requirement));
+    } else if (standard.has(field.name)) {
+      matchedStandard.add(field.name);
       rows.standard.push(payloadRow(field, 'standard'));
     } else if (custom.has(field.name)) {
       matchedCustom.add(field.name);
@@ -107,8 +100,11 @@ function unifiedPayloadSection(event) {
   }
   required.forEach((field, index) => {
     if (matchedRequired.has(index)) return;
-    rows[requiredKind].push(payloadRow({ name: field.name, value: field.present ? field.value : 'Missing' }, requiredKind, field.requirement, !field.present));
+    rows.required.push(payloadRow({ name: field.name, value: field.present ? field.value : 'Missing' }, 'required', field.requirement, !field.present));
   });
+  for (const field of standard.values()) {
+    if (!matchedStandard.has(field.name)) rows.standard.push(payloadRow(field, 'standard'));
+  }
   for (const field of custom.values()) {
     if (!matchedCustom.has(field.name)) rows.custom.push(payloadRow(field, 'custom'));
   }
@@ -138,12 +134,13 @@ function actionContext(action) {
 function journeyEventCard(event, expandMatch = false) {
   const card = document.createElement('article'); card.className = 'event'; card.dataset.eventId = event.id;
   const heading = document.createElement('div'); heading.className = 'event-heading';
-  const title = document.createElement('strong'); title.textContent = `${event.platform} · ${event.event}`;
+  // The vendor is the heading of the group this card sits in.
+  const title = document.createElement('strong'); title.textContent = event.event;
   heading.append(title);
-  if (event.platform === 'Meta') {
-    const type = document.createElement('small'); type.className = 'event-type';
-    type.classList.add(`event-type-${metaEventType(event.event)}`);
-    type.textContent = metaEventType(event.event) === 'standard' ? 'Standard event' : 'Custom event';
+  if (event.eventType) {
+    const type = document.createElement('small'); type.className = `event-type event-type-${event.eventType}`;
+    type.textContent = event.eventType === 'standard' ? 'Standard' : 'Custom';
+    type.title = event.eventType === 'standard' ? 'Standard event defined by the vendor' : 'Custom event defined by the website';
     heading.append(type);
   }
   const findings = bestPracticeFindings([event]);
@@ -152,12 +149,18 @@ function journeyEventCard(event, expandMatch = false) {
     badge.textContent = `${findings.length} check${findings.length === 1 ? '' : 's'} flagged`;
     heading.append(badge);
   }
-  const info = document.createElement('small'); info.textContent = `${new Date(event.at).toLocaleTimeString()} · Destination ${event.pixelId}`;
-  const status = document.createElement('small'); status.className = 'event-status';
-  status.textContent = `${event.id} · ${event.failed ? failureLabel(event.failureReason) : event.status ? `HTTP ${event.status}` : 'Response unconfirmed'}${event.viaServiceWorker ? ' · via service worker' : ''}`;
+  // The pixel ID heads this card's group, and successful responses need no mention; a
+  // status line appears only for failed, non-2xx, unconfirmed, or service worker requests.
+  const time = document.createElement('small'); time.className = 'event-time';
+  time.textContent = new Date(event.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  heading.append(time);
+  const problem = event.failed ? failureLabel(event.failureReason) : !event.status ? 'Response unconfirmed' : event.status >= 300 ? `HTTP ${event.status}` : '';
+  const notes = [problem, event.viaServiceWorker ? 'via service worker' : ''].filter(Boolean);
+  const status = document.createElement('small'); status.className = `event-status${problem ? ' event-status-problem' : ''}`;
+  status.textContent = notes.join(' · ');
   const details = readableEventDetails(event); details.open = expandMatch || openEvents.has(event.id);
   details.addEventListener('toggle', () => details.open ? openEvents.add(event.id) : openEvents.delete(event.id));
-  card.append(heading, info, status, details);
+  card.append(heading, ...(notes.length ? [status] : []), details);
   return card;
 }
 function groupedActionEvents(actionId, events, expandMatches = false) {
@@ -397,4 +400,9 @@ chrome.tabs.onActivated.addListener(({ tabId }) => loadTab(tabId));
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab.active && (changeInfo.url || changeInfo.status === 'complete')) loadTab(tabId);
 });
+// Keep a port open to the worker: closing the last panel ends every recording and clears its
+// data. The worker may stop and restart while the panel is open, so reconnect when it drops.
+(function connectPanel() {
+  chrome.runtime.connect({ name: 'panel' }).onDisconnect.addListener(() => setTimeout(connectPanel, 100));
+})();
 loadTab();

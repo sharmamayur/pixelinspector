@@ -1,6 +1,6 @@
 import { sources } from './sources.mjs';
 import { present } from './helpers.mjs';
-import { metaStandardEvents } from '../meta-events.mjs';
+import { metaStandardEvents } from '../standards.mjs';
 
 export default [
   {

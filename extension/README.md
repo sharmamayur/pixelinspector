@@ -17,16 +17,18 @@ First [download or clone the repository](../README.md#install-from-source). You 
 2. Inspection starts automatically for the current website tab when the panel opens. Reload the page once if you want to include pixels that fired before the panel opened.
 3. Browse normally. PixelMonitor records page views, clicked elements, and form submissions as one ordered visitor journey. Captured elements briefly flash blue.
 4. Review each action alongside the marketing requests that appeared afterward.
-5. Browse events by vendor and pixel ID. Open an event to inspect one payload field list. Badges distinguish vendor-required fields, website-specific custom fields, and other fields sent with the request.
+5. Browse events by vendor and pixel ID. Events are labeled **Standard event** or **Custom event**. Open an event to inspect one payload field list, where each field is marked **Required**, **Standard** (a parameter the vendor documents), **Custom** (the website's own data in the vendor's event-data fields), or **Other** (identifiers, page and transport details).
 6. Wait for delayed events, then click **Pause** when you want to stop capturing. Click **Resume** to continue the same session.
 
-Each browser tab has its own session. A session follows its tab through reloads and navigation, including cross-domain navigation, and continues when you switch tabs. While the panel is open, switching to another website tab starts its inspection automatically. Clear deletes the captured results and immediately starts a fresh recording. Use Pause to stop capture. Closing a tab deletes its session. Closing and reopening the side panel does not stop inspection. A tab's session pauses, with a notice, at 1,000 events or 250 recorded actions, or when all sessions together approach Chrome's 10 MB extension session storage limit. Very large payloads reach the storage limit sooner.
+Each browser tab has its own session. A session follows its tab through reloads and navigation, including cross-domain navigation, and continues when you switch tabs. While the panel is open, switching to another website tab starts its inspection automatically. Clear deletes the captured results and immediately starts a fresh recording. Use Pause to stop capture. Closing a tab deletes its session. Closing the side panel ends every recording and clears all captured results from memory and storage, so export anything you need first; reopening the panel starts a fresh recording. Reloading the panel keeps the current sessions. A tab's session pauses, with a notice, at 1,000 events or 250 recorded actions, or when all sessions together approach Chrome's 10 MB extension session storage limit. Very large payloads reach the storage limit sooner.
 
 ## What PixelMonitor recognizes
 
 PixelMonitor recognizes browser requests from Meta, GA4, Google Ads, Google Floodlight, TikTok, Pinterest, LinkedIn, Snapchat, Microsoft Ads, Reddit Ads, X Ads, Adobe Analytics, Criteo, Taboola, Outbrain, Snowplow, and Amplitude. Script loads alone do not count as fired events.
 
-Meta Pixel requests sent through a first-party proxy are recognized when they keep the Pixel's `/tr` path, numeric pixel ID, and event parameter. Amplitude supports US/EU HTTP API and batch requests, and SDK requests sent to a custom server URL, grouped by project API key. Snowplow supports tracker GET requests and JSON batches on first-party collectors, grouped by app ID (or collector hostname when absent), including decoded self-describing events.
+Meta Pixel requests sent through a first-party proxy are recognized when they keep the Pixel's `/tr` path, numeric pixel ID, and event parameter. Amplitude supports US/EU HTTP API and batch requests, and SDK requests sent to a custom server URL, grouped by project API key. Snowplow supports JSON batches on any collector path and tracker GET requests, including collectors behind a path prefix or on a custom path, grouped by app ID (or collector hostname when absent), including decoded self-describing events. The tracker's beacon mode sends batches as a Blob, whose body Chrome does not make available to extensions; these appear as an "Unreadable batch" instead of their individual events.
+
+Standard event names come from each vendor's published list: Meta, GA4 (recommended, automatically collected, and enhanced measurement events), TikTok (including the earlier CompletePayment, PlaceAnOrder, and ClickButton), Pinterest, Snapchat, Reddit Ads, Microsoft Ads (page loads; UET event actions are custom events), Amplitude (events the SDK generates, such as `[Amplitude] Page Viewed`), and Snowplow (built-in event types and Snowplow-authored schemas). Google Ads, Floodlight, LinkedIn, X Ads, Adobe Analytics, Criteo, Taboola, and Outbrain name events through account configuration, so their events are not labeled.
 
 It records request outcomes and payload fields as evidence without labeling the site healthy or broken. Repeated events remain visible without assuming they are erroneous duplicates. Existing cookies, consent choices, ad blockers, and browser settings can affect what appears.
 
@@ -52,7 +54,7 @@ References: [Meta Pixel](https://developers.facebook.com/docs/meta-pixel/referen
 
 ## Privacy and limits
 
-- Session data stays in Chrome session storage until Chrome closes, the tab closes, or you clear it. PixelMonitor does not upload the captured data.
+- Session data stays in Chrome session storage until you close the side panel, close the tab, clear it, or Chrome closes. PixelMonitor does not upload the captured data.
 - PixelMonitor does not intentionally retain screenshots, cookies, URL fragments, browser headers, or values typed into forms on the inspected page.
 - It stores the fields and values a site sends in recognized vendor requests. These payloads can include visitor identifiers, transaction IDs, customer data, page URLs, and consent values.
 - URL origins and paths, event names, payload values, clicked-element roles, accessible names, and selector fallbacks may be retained. Review any downloaded file before sharing it.
