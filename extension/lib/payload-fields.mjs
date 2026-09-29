@@ -28,6 +28,11 @@ export function customFields(entries, excluded = []) {
   return fields;
 }
 
+// Indented display text for a stored JSON field, falling back to the text as sent.
+export function prettyJson(json) {
+  try { return JSON.stringify(JSON.parse(json), null, 2); } catch { return String(json); }
+}
+
 export function payloadFields(entries) {
   return entries.map(([rawName, rawValue]) => {
     const name = String(rawName || '') || 'Unnamed field';

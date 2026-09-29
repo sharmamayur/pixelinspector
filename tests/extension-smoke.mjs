@@ -271,7 +271,7 @@ try {
   assert.match(await panel.locator('#journey').innerText(), /snap-browser-two/);
   for (const [platform, endpoint, payload, names, destination] of [
     ['Amplitude', 'https://api2.amplitude.com/2/httpapi', {api_key:'amplitude-project',events:[{event_type:'Viewed'},{event_type:'Purchased'}]}, ['Viewed','Purchased'], 'amplitude-project'],
-    ['Snowplow', 'https://collector.fixture.test/com.snowplowanalytics.snowplow/tp2', {schema:'iglu:com.snowplowanalytics.snowplow/payload_data/jsonschema/1-0-4',data:[{e:'pv',aid:'snow-app'},{e:'pp',aid:'snow-app'}]}, ['PageView','PagePing'], 'snow-app'],
+    ['Snowplow', 'https://collector.fixture.test/com.snowplowanalytics.snowplow/tp2', {schema:'iglu:com.snowplowanalytics.snowplow/payload_data/jsonschema/1-0-4',data:[{e:'pv',aid:'snow-app',co:JSON.stringify({schema:'iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-0',data:[{schema:'iglu:com.shop/page/jsonschema/1-0-0',data:{section:'snow-section'}}]})},{e:'pp',aid:'snow-app'}]}, ['PageView','PagePing'], 'snow-app'],
   ]) {
     await context.route(endpoint, route => route.fulfill({status:204,body:''}));
     await website.evaluate(async ({endpoint,payload}) => {
@@ -286,6 +286,11 @@ try {
     assert.equal(await panel.locator('.event').count(), 2);
     assert.match(await panel.locator('#journey').innerText(), new RegExp(destination));
   }
+  await panel.locator('#filter').selectOption('Snowplow');
+  await panel.locator('#expandAll').click();
+  const snowJson = panel.locator('.json-field').filter({hasText:'Contexts'});
+  assert.equal(await snowJson.locator('code').innerText(), 'co');
+  assert.equal(JSON.parse(await snowJson.locator('pre').innerText()).data[0].data.section, 'snow-section');
   // Scramble storage order to verify numeric E-ID ordering inside each
   // existing vendor/pixel group, including E2 versus E10.
   await send('stop');
