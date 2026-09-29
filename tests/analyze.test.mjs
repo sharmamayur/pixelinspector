@@ -42,5 +42,5 @@ test('Meta names are classified as standard or custom with exact capitalization'
     assert.equal(event.eventType, 'custom', name);
     assert.equal(event.event, name);
   }
-  assert.equal(decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=Purchase')[0].eventType, undefined);
+  assert.equal(decodeEvents('https://www.google-analytics.com/g/collect?tid=G-ABC&en=Purchase')[0].eventType, 'custom');
 });

@@ -69,8 +69,48 @@ const event = (platform, name, pixelId, endpoint, extra = {}) => {
   };
 };
 
+// Snowplow tracker protocol events, from a GET query or a POST payload_data batch.
+function snowplowEvents(url, host, path, entries) {
+  return entries.flatMap(entry => {
+    if (typeof entry?.e !== 'string' || !entry.e.trim()) return [];
+    const decoded = {};
+    const decodedText = {};
+    for (const [field, encoded] of [['ue_pr', false], ['ue_px', true], ['co', false], ['cx', true]]) {
+      if (typeof entry[field] !== 'string') continue;
+      try {
+        const raw = encoded
+          ? new TextDecoder().decode(Uint8Array.from(atob(entry[field].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)))
+          : entry[field];
+        decoded[field] = JSON.parse(raw);
+        decodedText[field] = raw;
+      } catch {}
+    }
+    const custom = (decoded.ue_pr || decoded.ue_px)?.data;
+    // Decoded JSON fields are kept whole for display; their encoded rows would only duplicate them.
+    // They are stored as the sent JSON text because Chrome storage reorders object keys.
+    const jsonLabels = { ue_pr: 'Self-describing event', ue_px: 'Self-describing event', co: 'Contexts', cx: 'Contexts' };
+    const jsonFields = Object.entries(decodedText).map(([name, json]) => ({ name, label: jsonLabels[name], json }));
+    const schemaName = typeof custom?.schema === 'string' ? custom.schema.split('/')[1] : null;
+    const names = { pv: 'PageView', pp: 'PagePing', se: 'Structured event', ue: 'Self-describing event', tr: 'Transaction', ti: 'Transaction item' };
+    const name = entry.e === 'ue' ? schemaName || names.ue : entry.e === 'se' ? first(entry.se_ac, names.se) : names[entry.e] || entry.e;
+    // Built-in event types and Snowplow-authored schemas are standard; other schemas are the website's own.
+    const snowplowSchema = typeof custom?.schema === 'string' && /^iglu:com\.snowplowanalytics\./.test(custom.schema);
+    const eventType = entry.e === 'ue' ? (schemaName ? (snowplowSchema ? 'standard' : 'custom') : null) : names[entry.e] ? 'standard' : null;
+    const schemaFields = flattenFields(custom?.data || {});
+    return [event('Snowplow', name, first(entry.aid, host), `${url.origin}${path}`, {
+      value: first(entry.tr_tt, entry.ti_pr, entry.se_va), currency: first(entry.tr_cu, entry.ti_cu),
+      hasTransactionId: Boolean(entry.tr_id || entry.ti_id),
+      eventType,
+      ...(snowplowSchema ? { standardFields: customFields(schemaFields) } : {}),
+      customFields: customFields(snowplowSchema ? [] : schemaFields),
+      payloadEntries: flattenFields(entry).filter(([key]) => !(key in decoded)),
+      jsonFields,
+    })];
+  });
+}
+
 // Retain interpreted metadata plus a field-by-field view of the request payload.
-export function decodeMajorVendor(url, body = '') {
+export function decodeMajorVendor(url, body = '', { bodyUnavailable = false } = {}) {
   const host = url.hostname.toLowerCase();
   const path = url.pathname;
   const params = formParams(url, body);
@@ -89,7 +129,7 @@ export function decodeMajorVendor(url, body = '') {
       if (typeof entry?.event_type !== 'string' || !entry.event_type.trim()) return [];
       return [event('Amplitude', entry.event_type, key, `${url.origin}${path}`, {
         value: entry.revenue, currency: entry.event_properties?.currency,
-        customFields: customFields(flattenFields(entry.event_properties || {})),
+        customFields: customFields(flattenFields(entry.event_properties || {}, 'event_properties')),
         payloadEntries: [['api_key', key], ...flattenFields(entry)],
         ...(proxiedAmplitude ? { classificationNote: 'Amplitude events sent to a first-party or proxy endpoint instead of amplitude.com.' } : {}),
       })];
@@ -98,41 +138,23 @@ export function decodeMajorVendor(url, body = '') {
 
   const snowplowEnvelope = typeof json?.schema === 'string'
     && /^iglu:com\.snowplowanalytics\.snowplow\/payload_data\/jsonschema\//.test(json.schema);
-  const snowplowPath = /^\/(?:com\.snowplowanalytics\.snowplow\/tp2|i|ice\.png|r\/tp2)\/?$/.test(path);
-  if (snowplowEnvelope || (snowplowPath && params.has('e') && params.has('tv'))) {
-    const entries = snowplowEnvelope ? json.data : [Object.fromEntries(params)];
-    if (!Array.isArray(entries)) return [];
-    return entries.flatMap(entry => {
-      if (typeof entry?.e !== 'string' || !entry.e.trim()) return [];
-      const decoded = {};
-      const decodedText = {};
-      for (const [field, encoded] of [['ue_pr', false], ['ue_px', true], ['co', false], ['cx', true]]) {
-        if (typeof entry[field] !== 'string') continue;
-        try {
-          const raw = encoded
-            ? new TextDecoder().decode(Uint8Array.from(atob(entry[field].replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)))
-            : entry[field];
-          decoded[field] = JSON.parse(raw);
-          decodedText[field] = raw;
-        } catch {}
-      }
-      const custom = (decoded.ue_pr || decoded.ue_px)?.data;
-      // Decoded JSON fields are kept whole for display; their encoded rows would only duplicate them.
-      // They are stored as the sent JSON text because Chrome storage reorders object keys.
-      const jsonLabels = { ue_pr: 'Self-describing event', ue_px: 'Self-describing event', co: 'Contexts', cx: 'Contexts' };
-      const jsonFields = Object.entries(decodedText).map(([name, json]) => ({ name, label: jsonLabels[name], json }));
-      const schemaName = typeof custom?.schema === 'string' ? custom.schema.split('/')[1] : null;
-      const names = { pv: 'PageView', pp: 'PagePing', se: 'Structured event', ue: 'Self-describing event', tr: 'Transaction', ti: 'Transaction item' };
-      const name = entry.e === 'ue' ? schemaName || names.ue : entry.e === 'se' ? first(entry.se_ac, names.se) : names[entry.e] || entry.e;
-      return [event('Snowplow', name, first(entry.aid, host), `${url.origin}${path}`, {
-        value: first(entry.tr_tt, entry.ti_pr, entry.se_va), currency: first(entry.tr_cu, entry.ti_cu),
-        hasTransactionId: Boolean(entry.tr_id || entry.ti_id),
-        customFields: customFields([...flattenFields(custom?.data || {}), ...Object.entries(entry).filter(([key]) => key.startsWith('se_'))]),
-        payloadEntries: flattenFields(entry).filter(([key]) => !(key in decoded)),
-        jsonFields,
-      })];
-    });
+  // Collectors often sit behind a path prefix (/sp/i) or a custom path, so a GET request is also
+  // recognized anywhere by its tracker protocol parameters: event type, tracker version, and an
+  // event or app ID.
+  const snowplowPath = /(?:^|\/)(?:com\.snowplowanalytics\.snowplow\/tp2|i|ice\.png|r\/tp2)\/?$/.test(path);
+  const snowplowProtocol = ['pv', 'pp', 'se', 'ue', 'tr', 'ti'].includes(params.get('e')) && (params.has('eid') || params.has('aid'));
+  if (params.has('tv') && (snowplowPath ? params.has('e') : snowplowProtocol) && !snowplowEnvelope && !json) {
+    return snowplowEvents(url, host, path, [Object.fromEntries(params)]);
   }
+  // Chrome does not expose bodies sent as a Blob (the tracker's beacon mode), so the batch's
+  // events cannot be read. Record that a batch was sent rather than dropping it silently.
+  if (bodyUnavailable && /(?:^|\/)com\.snowplowanalytics\.snowplow\/tp2\/?$/.test(path)) {
+    return [event('Snowplow', 'Unreadable batch', host, `${url.origin}${path}`, {
+      eventType: null,
+      classificationNote: 'Chrome did not make this request’s body available (it was sent as a Blob, as the tracker’s beacon mode does), so the events in this batch could not be read.',
+    })];
+  }
+  if (snowplowEnvelope) return Array.isArray(json.data) ? snowplowEvents(url, host, path, json.data) : [];
 
   if (host === 'analytics.tiktok.com' && /^\/api\/v\d+\/pixel(?:\/act)?\/?$/.test(path)) {
     const activity = /\/act\/?$/.test(path);
@@ -146,7 +168,8 @@ export function decodeMajorVendor(url, body = '') {
     }
     const payloads = tikTokPayloads(parsed);
     if (payloads.length) return payloads.map(payload => {
-      const properties = flattenFields(payload.properties || {});
+      // Named like the payload rows so the panel can match them.
+      const properties = flattenFields(payload.properties || {}, 'properties');
       const name = tikTokEventName(payload, activity) || (activity ? 'Automatic activity' : null);
       const pixelId = tikTokPixelId(payload, params);
       return event('TikTok', name, pixelId, `${url.origin}/api/v2/pixel${activity ? '/act' : ''}`, {
@@ -154,7 +177,7 @@ export function decodeMajorVendor(url, body = '') {
           hasTransactionId: Boolean(payload.properties?.order_id || payload.event_id),
           customFields: customFields(properties),
           payloadEntries: [...params, ...flattenFields(payload)],
-          ...(!payload.event && !payload.event_name && activity ? { classificationNote: 'TikTok automatic activity observed. The label comes from TikTok’s page trigger or activity action, not a configured event name.' } : {}),
+          ...(!payload.event && !payload.event_name && activity ? { eventType: null, classificationNote: 'TikTok automatic activity observed. The label comes from TikTok’s page trigger or activity action, not a configured event name.' } : {}),
         });
     });
     const name = first(params.get('event'), params.get('event_name'), params.get('eventName'), params.get('type'));
@@ -163,7 +186,7 @@ export function decodeMajorVendor(url, body = '') {
     if (!name && !activity) return [];
     return [event('TikTok', name || (action ? `Auto ${action}` : 'Automatic activity'), tikTokPixelId({}, params), `${url.origin}/api/v2/pixel${activity ? '/act' : ''}`, {
       payloadEntries: [...params],
-      ...(!name && activity ? { classificationNote: 'TikTok automatic activity observed. The label comes from TikTok’s page trigger or activity action, not a configured event name.' } : {}),
+      ...(!name && activity ? { eventType: null, classificationNote: 'TikTok automatic activity observed. The label comes from TikTok’s page trigger or activity action, not a configured event name.' } : {}),
     })];
   }
 
@@ -225,7 +248,7 @@ export function decodeMajorVendor(url, body = '') {
     return [event('Reddit Ads', json?.event_name || json?.event?.type || params.get('event') || params.get('event_name'),
       json?.pixel_id || params.get('id') || params.get('pixel_id'), `${url.origin}${host === 'alb.reddit.com' ? '/snoo.gif' : '/v2/'}`, {
         value: json?.event_metadata?.value || params.get('value'), currency: json?.event_metadata?.currency || params.get('currency'),
-        customFields: customFields(json?.event_metadata ? flattenFields(json.event_metadata) : [...params].filter(([key]) => ['value','currency','item_count','products','conversion_id'].includes(key))),
+        customFields: customFields(json?.event_metadata ? flattenFields(json.event_metadata, 'event_metadata') : [...params].filter(([key]) => ['value','currency','item_count','products','conversion_id'].includes(key))),
         payloadEntries: json ? flattenFields(json) : [...params],
       })];
   }

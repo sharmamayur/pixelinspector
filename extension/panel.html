@@ -11,8 +11,6 @@
     .payload-legend{display:flex;align-items:center;gap:13px;flex-wrap:wrap;color:#667085;font-size:9px;margin:7px 14px 11px}
     .payload-legend span{display:inline-flex;align-items:center;gap:5px}
     .field-indicator{display:inline-block;width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:#cbd5e1}
-    .payload-row.field-required .field-indicator{background:#2563eb}
-    .payload-row.field-custom .field-indicator{background:#7c3aed}
     .payload-row.field-missing .field-indicator{background:#dc2626}
     .unified-payload dl{margin:0;border-top:1px solid #e9edf3}
     .unified-payload dl>div{display:grid;grid-template-columns:minmax(125px,.55fr) minmax(0,1.45fr);gap:16px;padding:9px 13px;border:0;border-bottom:1px solid #edf0f4;align-items:start}
@@ -54,7 +52,7 @@
       </div>
       <p id="notice" class="message notice-message" role="status"></p>
       <div id="controls" class="capture-context" hidden>
-        <div><strong>Recording controls</strong><p>Pause stops recording. Clear resets the results. Recording continues when you close the panel.</p></div>
+        <div><strong>Recording controls</strong><p>Pause stops recording. Clear resets the results. Closing this panel ends recording and clears all results, so export first.</p></div>
       </div>
     </section>
     <div id="results" hidden>
@@ -98,7 +96,7 @@
     </div>
     <footer>
       <div class="footer-heading"><strong>Private browser session</strong><div class="footer-links"><a class="feedback-link" href="mailto:mayur@pixelmonitor.app?subject=Pixel%20Inspector%20feedback">Send feedback</a><a class="feedback-link" href="privacy.html" target="_blank" rel="noreferrer">Privacy</a></div></div>
-      Session data is cleared when you close the tab. Downloaded reports stay on your device.
+      Session data is cleared when you close this panel or the tab. Downloaded reports stay on your device.
     </footer>
   </main>
   <script type="module" src="panel.js"></script>

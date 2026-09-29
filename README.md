@@ -28,7 +28,7 @@ Keep the source folder on your computer: Chrome loads the extension from that lo
 3. Browse the site and expand events to inspect their payloads and best-practice findings for Meta, GA4, Google Ads, Pinterest, and Microsoft Ads. Each finding includes a suggested fix and vendor documentation. Search or filter by vendor to narrow the results.
 4. Use **Pause** to stop capture and enable HTML, JSON, or plain-text exports. **Resume** continues recording. **Clear** removes the results and immediately starts a new recording.
 
-While the panel is open, switching website tabs starts separate inspection sessions. Closing the panel does not stop an existing recording; use **Pause**. Closing a website tab deletes its session.
+While the panel is open, switching website tabs starts separate inspection sessions. Closing the panel ends every recording and clears its results, so export first if you need them; reopening it starts fresh. Closing a website tab deletes its session.
 
 See the [user guide](extension/README.md) for supported vendors, troubleshooting, and capture limits.
 

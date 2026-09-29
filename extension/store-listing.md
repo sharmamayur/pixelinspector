@@ -38,7 +38,7 @@ Inspection starts automatically when the panel opens or you switch to a website 
 
 **webRequest:** Observes recognized advertising and analytics requests and their browser delivery outcome so the extension can show which pixels fired.
 
-**storage:** Keeps each tab's inspection data in Chrome session storage through service-worker restarts. The session is removed when the tab closes, the user clears it, or the browser session ends.
+**storage:** Keeps each tab's inspection data in Chrome session storage through service-worker restarts. Sessions are removed when the side panel closes, the tab closes, the user clears it, or the browser session ends.
 
 **sidePanel:** Displays Pixel Inspector beside the website being inspected.
 

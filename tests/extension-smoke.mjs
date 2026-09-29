@@ -65,18 +65,20 @@ try {
   const destinationSummary = cartAction.locator('.action-destination-group > summary');
   assert.match(await destinationSummary.innerText(), /Pixel ID · 123 · 1 event/);
   await destinationSummary.click();
-  assert.match(await cartAction.locator('.action-event-list').innerText(), /Meta · AddToCart[\s\S]*Destination 123/);
-  assert.match(await cartAction.locator('.event-heading').innerText(), /Standard event/);
+  assert.match(await cartAction.locator('.action-event-list').innerText(), /Pixel ID · 123[\s\S]*AddToCart[\s\S]*\d:\d\d:\d\d/);
+  assert.match(await cartAction.locator('.event-heading').innerText(), /^AddToCart\nStandard\n/);
   const firstDetails = panel.locator('[data-event-id="E1"] > details');
   await firstDetails.locator(':scope > summary').click();
   assert.equal(await firstDetails.locator(':scope > .event-explanation, :scope > dl').count(), 0);
   assert.deepEqual(await firstDetails.locator('.payload-fields h4').allTextContents(), ['Payload fields']);
   assert.match(await firstDetails.locator(':scope > summary').innerText(), /View payload · 5 fields/);
-  assert.match(await firstDetails.locator('.payload-fields').innerText(), /Standard[\s\S]*Custom[\s\S]*Other[\s\S]*id[\s\S]*123[\s\S]*ev[\s\S]*AddToCart/);
+  assert.match(await firstDetails.locator('.payload-fields').innerText(), /Required[\s\S]*Standard[\s\S]*Custom[\s\S]*Other[\s\S]*id[\s\S]*123[\s\S]*ev[\s\S]*AddToCart/);
   assert.match(await firstDetails.locator('.payload-fields').innerText(), /cd\[content_category\][\s\S]*Shoes[\s\S]*test_mode[\s\S]*enabled[\s\S]*customer_email[\s\S]*person@example.com/);
-  assert.deepEqual(await firstDetails.locator('.payload-row').evaluateAll(rows => rows.map(row => row.dataset.kind)), ['standard', 'standard', 'standard', 'other', 'other']);
+  assert.deepEqual(await firstDetails.locator('.payload-row').evaluateAll(rows => rows.map(row => row.dataset.kind)), ['required', 'required', 'standard', 'other', 'other']);
   assert.equal(await firstDetails.locator('.raw-data').count(), 0);
   assert.match(await firstDetails.locator('.payload-row.field-standard').allTextContents().then(rows => rows.join(' ')), /content_category/);
+  assert.equal(await panel.locator('[data-event-id="E1"] .event-type').innerText(), 'Standard');
+  assert.equal(await panel.locator('[data-event-id="E1"] .event-status').count(), 0);
   await panel.locator('#search').fill('AddToCart');
   assert.equal(await panel.locator('.event').count(), 1);
   assert.equal(await panel.locator('#journey > li').count(), 1);
@@ -291,6 +293,16 @@ try {
   const snowJson = panel.locator('.json-field').filter({hasText:'Contexts'});
   assert.equal(await snowJson.locator('code').innerText(), 'co');
   assert.equal(JSON.parse(await snowJson.locator('pre').innerText()).data[0].data.section, 'snow-section');
+  // Real tracker transports: a GET collector behind a path prefix, and beacon mode, whose Blob
+  // body Chrome does not expose to extensions.
+  await website.evaluate(() => {
+    new Image().src = 'https://collector.fixture.test/sp/i?e=pv&tv=js-4.1.0&aid=snow-get&eid=00000000-0000-4000-8000-000000000001';
+    navigator.sendBeacon('https://collector.fixture.test/com.snowplowanalytics.snowplow/tp2', new Blob([JSON.stringify({ schema: 'iglu:com.snowplowanalytics.snowplow/payload_data/jsonschema/1-0-4', data: [{ e: 'pv', aid: 'snow-beacon', tv: 'js-3' }] })], { type: 'application/json' }));
+  });
+  await panel.waitForFunction(async tabId => {
+    const events = (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`].events;
+    return events.some(e => e.pixelId === 'snow-get') && events.some(e => e.event === 'Unreadable batch');
+  }, tabId);
   // Scramble storage order to verify numeric E-ID ordering inside each
   // existing vendor/pixel group, including E2 versus E10.
   await send('stop');
@@ -342,11 +354,13 @@ try {
   const quotaTabId = await worker.evaluate(async () => (await chrome.tabs.query({})).find(t => t.url?.startsWith('https://quota-fixture.test')).id);
   await send('start', {tabId:quotaTabId});
   const quotaKey = `audit:${quotaTabId}`;
-  for (let i = 0; i < 40; i++) {
-    await quotaSite.evaluate(async i => {
-      const body = new URLSearchParams({ id: '123', ev: 'Lead', 'cd[blob]': 'x'.repeat(400000), 'cd[n]': String(i) });
-      await fetch('https://www.facebook.com/tr/', { method: 'POST', mode: 'no-cors', body });
-    }, i);
+  // Concurrent bursts land several large events in one batched write, which could previously
+  // overshoot the quota and leave storage behind memory, still marked as recording.
+  for (let burst = 0; burst < 8; burst++) {
+    await quotaSite.evaluate(async burst => {
+      await Promise.all(Array.from({ length: 5 }, (_, i) => fetch('https://www.facebook.com/tr/', { method: 'POST', mode: 'no-cors',
+        body: new URLSearchParams({ id: '123', ev: 'Lead', 'cd[blob]': 'x'.repeat(400000), 'cd[n]': `${burst}-${i}` }) })));
+    }, burst);
     if ((await send('get', {tabId:quotaTabId})).audit.recording === false) break;
   }
   const full = (await send('get', {tabId:quotaTabId})).audit;
@@ -355,6 +369,7 @@ try {
   await panel.waitForFunction(async key => (await chrome.storage.session.get(key))[key]?.recording === false, quotaKey);
   const storedFull = (await panel.evaluate(async key => (await chrome.storage.session.get(key))[key], quotaKey));
   assert.equal(storedFull.events.length, full.events.length);
+  assert.equal(storedFull.notice, full.notice);
   assert.ok(full.events.length > 5 && full.events.length < 40, `captured ${full.events.length} large events`);
   await quotaSite.close();
   await panel.waitForFunction(async key => !(await chrome.storage.session.get(key))[key], quotaKey);
@@ -362,5 +377,24 @@ try {
   await privacy.goto(`chrome-extension://${id}/privacy.html`);
   assert.match(await privacy.locator('body').innerText(), /Limited Use/);
   await privacy.close();
-  console.log('Extension smoke test passed: independent per-tab recordings, neutral evidence UI, navigation, action capture, search, exports, and clear.');
+  // Closing the last panel ends every recording and releases its data; reopening starts fresh.
+  await send('resume');
+  await website.evaluate(() => { const image = new Image(); image.src = 'https://www.facebook.com/tr/?id=123&ev=Lead'; });
+  await panel.waitForFunction(async tabId => (await chrome.storage.session.get(`audit:${tabId}`))[`audit:${tabId}`]?.events.some(e => e.event === 'Lead'), tabId);
+  const beforeClose = (await send('get')).audit.startedAt;
+  await panel.close();
+  const storedSessions = () => worker.evaluate(async () => Object.keys(await chrome.storage.session.get(null)).filter(key => key.startsWith('audit:')).length);
+  for (let waited = 0; await storedSessions() > 0; waited += 250) {
+    assert.ok(waited < 10000, 'sessions were not cleared after the panel closed');
+    await new Promise(done => setTimeout(done, 250));
+  }
+  assert.equal(await worker.evaluate(async tabId => chrome.action.getBadgeText({ tabId }), tabId), '');
+  const reopened = await context.newPage();
+  await reopened.goto(`chrome-extension://${id}/panel.html`);
+  await reopened.waitForFunction(() => document.querySelector('#status')?.textContent === 'Inspecting');
+  // The reopened panel starts a new session on the most recently used website tab.
+  const after = await worker.evaluate(async () => Object.entries(await chrome.storage.session.get(null)).filter(([key]) => key.startsWith('audit:')).map(([, audit]) => audit));
+  assert.ok(after.length >= 1);
+  assert.ok(after.every(audit => audit.startedAt !== beforeClose && !audit.events.some(e => e.event === 'Lead')));
+  console.log('Extension smoke test passed: independent per-tab recordings, neutral evidence UI, navigation, action capture, search, exports, clear, and reset on panel close.');
 } finally { await context.close(); await rm(profile, {recursive:true, force:true}); }

@@ -182,7 +182,7 @@ test('Amplitude batches keep event names, project ID and per-event properties', 
       ] }));
       assert.deepEqual(events.map(e => [e.platform, e.event, e.pixelId]), [['Amplitude', 'Purchase', 'project-123'], ['Amplitude', '$identify', 'project-123']]);
       assert.equal(events[0].value, '0');
-      assert.ok(events[0].customFields.some(f => f.name === 'sku' && f.value === 'A'));
+      assert.ok(events[0].customFields.some(f => f.name === 'event_properties.sku' && f.value === 'A'));
       assert.ok(!events[1].payloadFields.some(f => f.name === 'event_properties.sku'));
     }
   }
@@ -256,4 +256,86 @@ test('Amplitude events through a custom server URL are recognized by their JSON 
   assert.match(event.classificationNote, /proxy endpoint/);
   assert.deepEqual(decodeEvents('https://shop.test/amp', JSON.stringify({ api_key: 'k', events: [{ name: 'x' }] })), []);
   assert.deepEqual(decodeEvents('https://shop.test/amp', JSON.stringify({ api_key: 'k', events: [] })), []);
+});
+
+test('every vendor with a standard event list labels events standard or custom', () => {
+  const type = (url, body) => decodeEvents(url, body)[0].eventType;
+  const tiktok = event => JSON.stringify({ event, pixel_code: 'C1', properties: {} });
+  const snap = ev => JSON.stringify({ req: [{ t: { pid: 'p', ev } }] });
+  const amp = event_type => JSON.stringify({ api_key: 'k', events: [{ event_type }] });
+  for (const [url, body, expected] of [
+    ['https://www.facebook.com/tr/?id=123&ev=Purchase', '', 'standard'],
+    ['https://www.facebook.com/tr/?id=123&ev=NewsletterSignup', '', 'custom'],
+    ['https://www.google-analytics.com/g/collect?tid=G-1&en=add_to_cart', '', 'standard'],
+    ['https://www.google-analytics.com/g/collect?tid=G-1&en=scroll', '', 'standard'],
+    ['https://www.google-analytics.com/g/collect?tid=G-1&en=checkout_step_2', '', 'custom'],
+    ['https://analytics.tiktok.com/api/v2/pixel', tiktok('CompletePayment'), 'standard'],
+    ['https://analytics.tiktok.com/api/v2/pixel', tiktok('LoyaltyJoin'), 'custom'],
+    ['https://ct.pinterest.com/v3/?tid=1&event=AddToCart', '', 'standard'],
+    ['https://ct.pinterest.com/v3/?tid=1&event=custom', '', 'custom'],
+    ['https://tr.snapchat.com/p', snap('PURCHASE'), 'standard'],
+    ['https://tr.snapchat.com/p', snap('CUSTOM_EVENT_1'), 'custom'],
+    ['https://alb.reddit.com/snoo.gif?id=1&event=AddToCart', '', 'standard'],
+    ['https://alb.reddit.com/snoo.gif?id=1&event=Custom', '', 'custom'],
+    ['https://bat.bing.com/action/0?ti=1&evt=pageLoad', '', 'standard'],
+    ['https://bat.bing.com/action/0?ti=1&evt=custom&ea=signup', '', 'custom'],
+    ['https://api2.amplitude.com/2/httpapi', amp('[Amplitude] Page Viewed'), 'standard'],
+    ['https://api2.amplitude.com/2/httpapi', amp('Checkout Started'), 'custom'],
+    ['https://c.shop.test/i?e=pv&tv=js-4', '', 'standard'],
+  ]) assert.equal(type(url, body), expected, `${url} ${body}`);
+  // Vendors whose event names come from account configuration get no label.
+  for (const url of [
+    'https://px.ads.linkedin.com/collect/?pid=1&conversionId=2',
+    'https://analytics.twitter.com/i/adsct?txn_id=tw-abc-def',
+    'https://www.googleadservices.com/pagead/conversion/123/?label=ABC',
+    'https://ad.doubleclick.net/ddm/activity/src=1;type=a;cat=b',
+  ]) assert.equal(decodeEvents(url)[0].eventType, undefined, url);
+  assert.equal(decodeEvents('https://analytics.tiktok.com/api/v2/pixel/act', JSON.stringify({ action: 'Metadata', context: { pixel: { code: 'C1' } } }))[0].eventType, undefined);
+});
+
+test('Snowplow self-describing events are standard only for Snowplow-authored schemas', () => {
+  const ue = schema => one(`https://c.shop.test/i?e=ue&tv=js-4&ue_pr=${encodeURIComponent(JSON.stringify({ schema: 'iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0', data: { schema, data: { target: 'x' } } }))}`);
+  const own = ue('iglu:com.shop/product_view/jsonschema/1-0-0');
+  assert.deepEqual([own.eventType, own.customFields.map(f => f.name), own.standardFields.map(f => f.name)], ['custom', ['target'], []]);
+  const builtIn = ue('iglu:com.snowplowanalytics.snowplow/link_click/jsonschema/1-0-1');
+  assert.deepEqual([builtIn.eventType, builtIn.customFields.map(f => f.name), builtIn.standardFields.map(f => f.name)], ['standard', [], ['target']]);
+  const structured = one('https://c.shop.test/i?e=se&tv=js-4&se_ca=Nav&se_ac=Open');
+  assert.deepEqual(structured.standardFields.map(f => f.name), ['se_ca', 'se_ac']);
+});
+
+test('payload fields are standard when they are vendor-documented event parameters', () => {
+  const names = event => [event.standardFields.map(f => f.name), event.customFields.map(f => f.name)];
+  assert.deepEqual(names(one('https://analytics.tiktok.com/api/v2/pixel', JSON.stringify({ event: 'Purchase', pixel_code: 'C1', properties: { value: 5, currency: 'USD', contents: [{ content_id: 'A' }], loyalty: 'gold' } }))),
+    [['properties.value', 'properties.currency', 'properties.contents[0].content_id'], ['properties.loyalty']]);
+  assert.deepEqual(names(one('https://ct.pinterest.com/v3/?tid=1&event=checkout&ed[value]=5&ed[currency]=USD&ed[line_items][0][product_id]=A&ed[campaign]=x')),
+    [['ed[value]', 'ed[currency]', 'ed[line_items][0][product_id]'], ['ed[campaign]']]);
+  assert.deepEqual(names(one('https://tr.snapchat.com/p', JSON.stringify({ ctx: { url: 'https://shop.test' }, req: [{ t: { pid: 'p', ev: 'PURCHASE', price: 5, item_ids: ['A', 'B'] } }] }))),
+    [['req[0].t.price', 'req[0].t.item_ids[0]', 'req[0].t.item_ids[1]'], []]);
+  assert.deepEqual(names(one('https://www.google-analytics.com/g/collect?tid=G-1&en=purchase&cu=USD&epn.value=5&ep.tier=gold&pr1=idA')),
+    [['cu', 'epn.value', 'pr1'], ['ep.tier']]);
+  assert.deepEqual(names(one('https://api2.amplitude.com/2/httpapi', JSON.stringify({ api_key: 'k', events: [{ event_type: 'Buy', revenue: 5, event_properties: { plan: 'pro' } }] }))),
+    [['revenue'], ['event_properties.plan']]);
+});
+
+test('Snowplow GET requests are recognized behind path prefixes and on custom collector paths', () => {
+  const query = 'e=pv&tv=js-4.1.0&aid=shop&eid=00000000-0000-4000-8000-000000000000&p=web';
+  for (const path of ['/sp/i', '/analytics/ice.png', '/collect', '/t']) {
+    const event = one(`https://shop.test${path}?${query}`);
+    assert.deepEqual([event.platform, event.event, event.pixelId], ['Snowplow', 'PageView', 'shop'], path);
+  }
+  assert.equal(one('https://shop.test/px?e=pp&tv=js-4&aid=shop').event, 'PagePing');
+  // Custom paths need the protocol signature; near-misses are ignored.
+  for (const url of [
+    'https://shop.test/collect?e=pv&tv=js-4',
+    'https://shop.test/collect?e=click&tv=1&eid=x',
+    'https://shop.test/collect?e=pv&aid=shop',
+  ]) assert.deepEqual(decodeEvents(url), [], url);
+});
+
+test('Snowplow batches whose body Chrome cannot expose are recorded as unreadable, not dropped', () => {
+  const [batch] = decodeEvents('https://sp.shop.test/com.snowplowanalytics.snowplow/tp2', '', { bodyUnavailable: true });
+  assert.deepEqual([batch.platform, batch.event, batch.pixelId, batch.eventType], ['Snowplow', 'Unreadable batch', 'sp.shop.test', undefined]);
+  assert.match(batch.classificationNote, /sent as a Blob/);
+  assert.deepEqual(decodeEvents('https://sp.shop.test/com.snowplowanalytics.snowplow/tp2', ''), []);
+  assert.deepEqual(decodeEvents('https://shop.test/api/save', '', { bodyUnavailable: true }), []);
 });

@@ -14,9 +14,16 @@ const now = () => new Date().toISOString();
 const storageKey = tabId => `audit:${tabId}`;
 const sessions = new Map();
 // Approximate stored size per tab, as Chrome counts it: the key plus the JSON value in UTF-8.
+// Stored bytes are confirmed by a successful write; pending bytes estimate what captures
+// have added in memory since then.
 const storedBytes = new Map();
-const sizeOf = (tabId, audit) => new TextEncoder().encode(storageKey(tabId) + JSON.stringify(audit)).length;
-// Leave headroom below Chrome's session storage quota (10 MB) for the batch being written.
+const pendingBytes = new Map();
+const jsonBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
+const sizeOf = (tabId, audit) => new TextEncoder().encode(storageKey(tabId)).length + jsonBytes(audit);
+const projectedBytes = tabId => (storedBytes.get(tabId) || 0) + (pendingBytes.get(tabId) || 0);
+const otherBytes = tabId => [...sessions.keys()].reduce((total, id) => id === tabId ? total : total + projectedBytes(id), 0);
+// Leave headroom below Chrome's session storage quota (10 MB) for actions and response
+// statuses, which are not checked individually.
 const STORAGE_BUDGET = Math.floor((chrome.storage.session.QUOTA_BYTES || 10485760) * 0.9);
 const STORAGE_NOTICE = 'Session paused because Chrome’s extension storage is nearly full. Export it if needed, then Clear this or another tab’s session.';
 let loaded = null;
@@ -39,25 +46,28 @@ async function flush() {
   clearTimeout(flushTimer);
   flushTimer = null;
   const items = {};
+  const sizes = new Map();
   const paused = [];
   for (const tabId of unsaved) {
     const audit = sessions.get(tabId);
     if (!audit) continue;
-    let bytes = sizeOf(tabId, audit);
-    const others = [...storedBytes].reduce((total, [id, size]) => id === tabId ? total : total + size, 0);
-    // Pause before the write so the stored copy stays complete and consistent.
-    if (audit.recording && others + bytes > STORAGE_BUDGET) {
+    // Captures are checked as they arrive; this catches other growth before it is written.
+    if (audit.recording && otherBytes(tabId) + sizeOf(tabId, audit) > STORAGE_BUDGET) {
       pause(audit, STORAGE_NOTICE);
       paused.push(audit);
-      bytes = sizeOf(tabId, audit);
     }
     items[storageKey(tabId)] = audit;
-    storedBytes.set(tabId, bytes);
+    sizes.set(tabId, sizeOf(tabId, audit));
   }
   unsaved.clear();
   try {
     await chrome.storage.session.set(items);
+    for (const [tabId, bytes] of sizes) {
+      storedBytes.set(tabId, bytes);
+      pendingBytes.delete(tabId);
+    }
   } catch (error) {
+    for (const [tabId, bytes] of sizes) pendingBytes.set(tabId, bytes - (storedBytes.get(tabId) || 0));
     // The write was rejected, so storage and the panel's view are stale. Keep the session in
     // memory, stop capturing, and ask the panel to fetch it directly.
     console.error('PixelMonitor: session storage write failed', error);
@@ -84,6 +94,7 @@ async function remove(tabId) {
   await load();
   sessions.delete(tabId);
   storedBytes.delete(tabId);
+  pendingBytes.delete(tabId);
   unsaved.delete(tabId);
   await chrome.storage.session.remove(storageKey(tabId));
 }
@@ -266,15 +277,25 @@ chrome.webRequest.onBeforeRequest.addListener(details => {
       const decoder = new TextDecoder();
       body = details.requestBody.raw.map(part => part.bytes ? decoder.decode(part.bytes, { stream: true }) : '').join('') + decoder.decode();
     }
-    const decoded = decodeEvents(details.url, body);
+    const decoded = decodeEvents(details.url, body, { bodyUnavailable: Boolean(details.requestBody?.error) });
     if (!decoded.length) return;
     if (audit.events.length + decoded.length > MAX_EVENTS) {
       await pauseAtLimit(audit, `Session paused at the ${MAX_EVENTS.toLocaleString('en-US')}-event limit. Export it if needed, then Clear to start a new one.`);
       return;
     }
-    if (fromWorker) workerRequests.set(details.requestId, tabId);
     const currentAction = audit.actions.at(-1);
-    for (const event of decoded) audit.events.push({ ...event, id: `E${audit.events.length + 1}`, requestId: details.requestId, actionId: currentAction.id, action: currentAction.name, at: new Date(details.timeStamp).toISOString(), ...(fromWorker ? { viaServiceWorker: true } : {}) });
+    const captured = decoded.map((event, index) => ({ ...event, id: `E${audit.events.length + index + 1}`, requestId: details.requestId, actionId: currentAction.id, action: currentAction.name, at: new Date(details.timeStamp).toISOString(), ...(fromWorker ? { viaServiceWorker: true } : {}) }));
+    // Pause before accepting events that would not fit in storage, so the paused session
+    // can always be written. A burst of large requests could otherwise overshoot the quota
+    // between batched writes.
+    const added = jsonBytes(captured);
+    if (otherBytes(tabId) + projectedBytes(tabId) + added > STORAGE_BUDGET) {
+      await pauseAtLimit(audit, STORAGE_NOTICE);
+      return;
+    }
+    if (fromWorker) workerRequests.set(details.requestId, tabId);
+    audit.events.push(...captured);
+    pendingBytes.set(tabId, (pendingBytes.get(tabId) || 0) + added);
     await save(audit);
   });
 }, filter, ['requestBody']);
@@ -304,4 +325,41 @@ chrome.webRequest.onErrorOccurred.addListener(details => complete(details, true)
 chrome.tabs.onRemoved.addListener(tabId => enqueue(async () => {
   if (await read(tabId)) await remove(tabId);
 }));
-enqueue(load);
+// Sessions exist only while a panel is open. Each panel holds a port to this worker; once the
+// last one closes, every recording ends and its data is released from memory and storage.
+const panels = new Set();
+let resetTimer = null;
+const RESET_GRACE_MS = 2000;
+function scheduleReset() {
+  clearTimeout(resetTimer);
+  // A panel reload disconnects and reconnects within moments; only reset if none returns.
+  resetTimer = setTimeout(() => enqueue(resetAll), RESET_GRACE_MS);
+}
+async function resetAll() {
+  resetTimer = null;
+  if (panels.size) return;
+  await load();
+  const tabIds = [...sessions.keys()];
+  clearTimeout(flushTimer);
+  flushTimer = null;
+  for (const state of [sessions, storedBytes, pendingBytes, unsaved, workerRequests, pendingStarts]) state.clear();
+  const stored = Object.keys(await chrome.storage.session.get(null)).filter(key => key.startsWith('audit:'));
+  await chrome.storage.session.remove(stored);
+  for (const tabId of tabIds) {
+    await badge(tabId, null).catch(() => {});
+    await chrome.tabs.sendMessage(tabId, { type: 'observe-stop' }).catch(() => {});
+  }
+}
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name !== 'panel' || port.sender?.id !== chrome.runtime.id) return;
+  panels.add(port);
+  clearTimeout(resetTimer);
+  resetTimer = null;
+  port.onDisconnect.addListener(() => {
+    panels.delete(port);
+    if (!panels.size) scheduleReset();
+  });
+});
+// After a worker restart an open panel reconnects at once; sessions with no panel to return
+// (the panel closed while this worker was stopped) are reset.
+enqueue(load).then(() => { if (!panels.size && sessions.size) scheduleReset(); });
