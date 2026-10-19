@@ -4,9 +4,9 @@ Maintainer reference for the official store listing. Users installing from sourc
 
 ## Product details
 
-**Name:** Pixel Inspector by PixelMonitor
+**Name:** Pixel Inspector – Pixel Helper by PixelMonitor
 
-**Summary (132 characters maximum):** See which marketing pixels fire, what data they send, and which visitor action preceded them.
+**Summary (132 characters maximum):** A pixel helper for ad and analytics platforms. See which pixels fire, what data they send, and which action preceded them.
 
 **Category:** Developer Tools
 
@@ -18,7 +18,7 @@ Pixel Inspector helps marketers inspect advertising and analytics requests gener
 
 ## Detailed description
 
-See what your website sends to advertising and analytics platforms while you browse it.
+See what your website sends to advertising and analytics platforms while you browse it, including Meta, Google, TikTok, Pinterest, X, Microsoft Ads, Snowplow, and Amplitude.
 
 When you open the side panel, Pixel Inspector automatically records the journey in the current tab and connects each page visit, click, and form submission to the marketing requests observed afterward. Events are organized by vendor and destination ID, so you can quickly find the pixel you care about and inspect its full payload.
 
